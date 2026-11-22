@@ -73,6 +73,14 @@ public class MainActivity extends Activity {
         handler = new Handler(Looper.getMainLooper());
         injector = new MobileUiInjector(this);
 
+        // WebView 远程调试：注入的 CSS/JS 依赖 dsh 的 DOM 类名（带构建哈希前缀），
+        // dsh 一升级就可能对不上（侧栏抽屉卡在全开、点到哪都是抽屉）。开着它才能用
+        // `adb forward tcp:9222 localabstract:webview_devtools_remote_<pid>` + CDP
+        // 直接读真实 DOM，而不是靠猜。只暴露本地 127.0.0.1 页面。
+        if (android.os.Build.VERSION.SDK_INT >= 19) {
+            WebView.setWebContentsDebuggingEnabled(true);
+        }
+
         // 权限适配：Android 12 及以下请求存储权限（/sdcard/dsh-shared 兜底映射）；
         // Android 13+（含 16）前台服务通知改为主动申请 POST_NOTIFICATIONS——
         // targetSdk 28 虽有系统兜底弹窗，但时机不可控，显式申请更可靠

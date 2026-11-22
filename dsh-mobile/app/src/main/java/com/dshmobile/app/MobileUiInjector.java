@@ -45,6 +45,11 @@ public final class MobileUiInjector {
     }
 
     private static String readAsset(Context ctx, String name) {
+        // 覆盖入口（开发用）：把同名文件放到外部目录即可替换内置样式/脚本，
+        // 不用重打 APK。dsh 升级后 DOM 类名一变就得调 CSS，这个入口把
+        // "改一行 → CI 构建 3 分钟 → adb install" 缩成 "adb push → 重启 Activity"。
+        String override = readOverride(ctx, name);
+        if (override != null) return override;
         try (InputStream in = ctx.getAssets().open(name)) {
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             byte[] buf = new byte[8192];
@@ -58,7 +63,25 @@ public final class MobileUiInjector {
         }
     }
 
+    /** 外部覆盖文件：<外部 files 目录>/ui/<name>，存在且非空时优先于内置 asset。 */
+    private static String readOverride(Context ctx, String name) {
+        java.io.File dir = ctx.getExternalFilesDir("ui");
+        if (dir == null) return null;
+        java.io.File f = new java.io.File(dir, name);
+        if (!f.isFile() || f.length() == 0) return null;
+        try (InputStream in = new java.io.FileInputStream(f)) {
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
+            return out.toString(StandardCharsets.UTF_8.name());
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
     private static String toJsString(String s) {
+        if (s == null) s = "";
         StringBuilder sb = new StringBuilder("\"");
         for (int i = 0; i < s.length(); i++) {
             char c = s.charAt(i);
