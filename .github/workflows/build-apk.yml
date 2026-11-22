@@ -26,10 +26,18 @@ jobs:
           distribution: temurin
           java-version: "21"
 
-      - uses: android-actions/setup-android@v3
-
-      - name: Accept SDK licenses
-        run: yes | sdkmanager --licenses > /dev/null || true
+      # android-actions/setup-android@v3 pica azi cu "Failed to find package 'tools'"
+      # (sdkmanager-ul nou nu mai are pachetul `tools`). Runner-ele ubuntu au deja SDK-ul,
+      # deci instalăm doar platforma/build-tools-urile de care are nevoie compileSdk 36.
+      - name: SDK packages
+        run: |
+          SDK="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          SDKM="$(ls "$SDK"/cmdline-tools/*/bin/sdkmanager 2>/dev/null | tail -1)"
+          echo "ANDROID_HOME=$SDK"
+          echo "sdkmanager=$SDKM"
+          yes | "$SDKM" --sdk_root="$SDK" --licenses > /dev/null || true
+          "$SDKM" --sdk_root="$SDK" "platforms;android-36" "build-tools;36.0.0" > /dev/null
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
 
       # gradle.properties are aapt2FromMavenOverride=/opt/aapt2-custom/aapt2,
       # adică o cale din Termux-ul dezvoltatorului; pe runner nu există.
