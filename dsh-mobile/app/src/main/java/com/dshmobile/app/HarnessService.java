@@ -85,7 +85,7 @@ public class HarnessService extends Service {
         Prefs prefs = Prefs.of(this);
         int restarts = 0;
         while (wantRun) {
-            File log = new File(ProotRunner.baseDir(this), "dsh-web.log");
+            File log = new File(ProotRunner.logDir(this), "dsh-web.log");
             // 启动前自检 node-pty：pty.node 缺失时 dsh web 必崩（plugin tree
             // failed to load），先就地修复再启动，避免无意义的崩溃-重启循环
             if (NodePtyFixer.needsFix(ProotRunner.rootfsDir(this))) {

@@ -14,6 +14,16 @@ public final class ProotRunner {
         return new File(ctx.getFilesDir(), "bootstrap");
     }
 
+    /**
+     * harness 日志目录。优先放外部 files 目录：应用私有目录里的 dsh-web.log
+     * 只有应用自己能读，出了取不到 token / 启不来的问题就完全瞎了；外部目录
+     * 用 adb / 文件管理器都能看。外部卷不可用时退回私有目录。
+     */
+    public static File logDir(Context ctx) {
+        File ext = ctx.getExternalFilesDir(null);
+        return ext != null ? ext : baseDir(ctx);
+    }
+
     public static File rootfsDir(Context ctx) {
         return new File(baseDir(ctx), "rootfs");
     }
@@ -177,6 +187,8 @@ public final class ProotRunner {
         inner.add("127.0.0.1");
         inner.add("--port");
         inner.add(String.valueOf(port));
+        // 不加 --no-open 时 dsh 会去拉起系统浏览器，弹出 Chrome 标签页盖住应用
+        inner.add("--no-open");
         return exec(ctx, inner, logFile);
     }
 
