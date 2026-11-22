@@ -30,9 +30,13 @@ import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 
+import java.io.File;
 import java.io.IOException;
+import java.io.RandomAccessFile;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /** 主界面：全屏 WebView 加载 dsh Web UI，就绪前显示 DeepSeek 风格启动屏。 */
 public class MainActivity extends Activity {
@@ -47,6 +51,11 @@ public class MainActivity extends Activity {
     private int loadAttempts;
     private int port;
     private static final int REQ_FILE_CHOOSER = 42;
+    /** dsh web 要求带 token；每次 harness 重启 token 都会变，所以每轮加载前重读日志。 */
+    private static final Pattern PAGE_TOKEN =
+            Pattern.compile("[?&]token=([A-Za-z0-9._~-]+)");
+    private static final long TOKEN_SCAN_BYTES = 256 * 1024;
+    private boolean loadedWithToken;
     private ValueCallback<Uri[]> fileCallback;
 
     @Override
@@ -446,7 +455,41 @@ public class MainActivity extends Activity {
 
     private void loadMainUrl() {
         loadAttempts++;
-        webView.loadUrl("http://127.0.0.1:" + port + "/");
+        String token = harnessPageToken();
+        loadedWithToken = token != null;
+        // 没拿到 token 时退回裸根路径：旧版 dsh web 不需要 token，裸路径仍能打开
+        webView.loadUrl("http://127.0.0.1:" + port + "/"
+                + (token == null ? "" : "?token=" + token));
+    }
+
+    /**
+     * 从 harness 日志里取 dsh web 最近一次打印的访问 token。
+     *
+     * dsh web 启动时会打印 `dsh web: http://127.0.0.1:3080/?token=...`，不带 token 直接开
+     * `http://127.0.0.1:3080/` 只会得到 “authentication required; reopen the URL printed by
+     * dsh web.”。token 每次重启都变，因此不能缓存一次就完事，必须每轮重新从日志尾部读；
+     * 只扫尾部，避免安装/运行日志越积越大时整文件读进内存。
+     */
+    private String harnessPageToken() {
+        File log = new File(ProotRunner.baseDir(this), "dsh-web.log");
+        if (!log.isFile()) return null;
+        String tail;
+        try (RandomAccessFile raf = new RandomAccessFile(log, "r")) {
+            long len = raf.length();
+            long from = Math.max(0, len - TOKEN_SCAN_BYTES);
+            byte[] buf = new byte[(int) (len - from)];
+            raf.seek(from);
+            raf.readFully(buf);
+            tail = new String(buf, java.nio.charset.StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            return null;
+        }
+        Matcher m = PAGE_TOKEN.matcher(tail);
+        String last = null;
+        while (m.find()) {
+            last = m.group(1);
+        }
+        return last;
     }
 
     /** 主框架加载失败：恢复启动屏提示并有界自动重试（容器可能尚在预热或刚重启）。 */
@@ -501,6 +544,11 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         if (webView != null) webView.onResume();
+        // 上次没带 token 打开过（→ 页面停在 “authentication required”）：回到前台时补一次
+        // 带 token 的重载。带 token 加载成功后置位，不会反复刷新、不会丢聊天位置。
+        if (webView != null && !loadedWithToken && splash.getVisibility() != View.VISIBLE) {
+            loadMainUrl();
+        }
     }
 
     @Override

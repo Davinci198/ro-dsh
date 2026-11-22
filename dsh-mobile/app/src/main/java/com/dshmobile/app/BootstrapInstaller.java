@@ -46,6 +46,18 @@ public final class BootstrapInstaller {
     private static final String LIBTALLOC_POOL = TERMUX_POOL + "libt/libtalloc/";
     private static final String LIBANDROID_SHMEM_POOL = TERMUX_POOL + "liba/libandroid-shmem/";
     private static final String NODE_SERIES = "latest-v22.x";
+    private static final String DSH_PACKAGE = "@deepseek-ai/dsh";
+    /**
+     * 钉死 dsh 版本。
+     *
+     * 裸包名 `npm install -g @deepseek-ai/dsh` 在 npm 里等价于 `@*`，而 `*` 不匹配预发布
+     * 版本；这个包目前发布的全部是预发布（0.2.2-rc.5、0.2.3-alpha.2），于是首启安装必挂：
+     * `ETARGET No matching version found for @deepseek-ai/dsh@*`。
+     * 写死具体版本即可绕开范围解析，升级时只改这一行。
+     */
+    private static final String DSH_VERSION = "0.2.2-rc.5";
+    /** 配置的镜像拿不到包（墙/镜像未同步）时退到官方源。 */
+    private static final String FALLBACK_NPM_REGISTRY = "https://registry.npmjs.org";
     private static final int CONNECT_TIMEOUT = 15000;
     private static final int READ_TIMEOUT = 60000;
 
@@ -233,22 +245,8 @@ public final class BootstrapInstaller {
             File dshBin = new File(rootfs, "opt/node/bin/dsh");
             if (!dshBin.isFile()) {
                 stage("安装 DeepSeek Harness", 83);
-                // 上次安装若被中断（杀进程/磁盘满），会留下半成品目录，
-                // npm 重命名时报 ENOTEMPTY 永远装不上——先清掉再装
-                File scopeDir = new File(rootfs, "opt/node/lib/node_modules/@deepseek-ai");
-                File[] stale = scopeDir.listFiles();
-                if (stale != null) {
-                    for (File f : stale) {
-                        if (f.getName().equals("dsh") || f.getName().startsWith(".dsh-")) {
-                            deleteRecursively(f);
-                        }
-                    }
-                }
-                runInContainer(Arrays.asList("/opt/node/bin/npm", "config", "set", "registry",
-                        prefs.getNpmRegistry()), 83, 85);
-                checkCancelled();
-                runInContainer(Arrays.asList("/opt/node/bin/npm", "install", "-g",
-                        "@deepseek-ai/dsh"), 85, 96);
+                cleanStaleDshInstall(rootfs);
+                installDsh();
             } else {
                 log("dsh 已安装，跳过");
             }
@@ -366,7 +364,9 @@ public final class BootstrapInstaller {
         //noinspection ResultOfMethodCallIgnored
         etc.mkdirs();
         File resolv = new File(etc, "resolv.conf");
-        String dns = "nameserver 223.5.5.5\nnameserver 8.8.8.8\n";
+        // 只写 223.5.5.5（国内 DNS）时，境外网络下容器内解析全部超时 → npm 报
+        // EAI_AGAIN。多写两个公共解析器，glibc 按顺序试，任一可达即可。
+        String dns = "nameserver 1.1.1.1\nnameserver 8.8.8.8\nnameserver 223.5.5.5\n";
         Files.write(resolv.toPath(), dns.getBytes(StandardCharsets.UTF_8));
         // apt 源（arm64 ports，中科大镜像），供安装 node-pty 编译工具链。
         // 必须用 http 而非 https：全新 ubuntu-base rootfs 里还没有 CA 证书，
@@ -387,6 +387,64 @@ public final class BootstrapInstaller {
         //noinspection ResultOfMethodCallIgnored
         new File(rootfs, "root").mkdirs();
         log("已写入 resolv.conf、apt 源与挂载点");
+    }
+
+    /**
+     * 上次安装若被中断（杀进程/磁盘满），会留下半成品目录，npm 重命名时报 ENOTEMPTY
+     * 永远装不上——先清掉再装。
+     */
+    private void cleanStaleDshInstall(File rootfs) {
+        File scopeDir = new File(rootfs, "opt/node/lib/node_modules/@deepseek-ai");
+        File[] stale = scopeDir.listFiles();
+        if (stale == null) return;
+        for (File f : stale) {
+            if (f.getName().equals("dsh") || f.getName().startsWith(".dsh-")) {
+                deleteRecursively(f);
+            }
+        }
+    }
+
+    /**
+     * 在容器内安装 dsh。
+     *
+     * 两步回退：版本 [钉死版本 → latest → next]× 源 [配置镜像 → registry.npmjs.org]。
+     * 钉死版本解决预发布包的范围解析失败；源回退解决镜像没有这个包、或所在网络
+     * 连不上镜像（例如国内镜像在境外不可达）——否则用户只会看到一句
+     * “安装失败：容器命令失败(1)”，无法知道是版本还是网络的问题。
+     */
+    private void installDsh() throws IOException, InterruptedException {
+        List<String> registries = new ArrayList<>();
+        String configured = prefs.getNpmRegistry();
+        if (configured != null && !configured.trim().isEmpty()) {
+            registries.add(configured.trim());
+        }
+        if (!registries.contains(FALLBACK_NPM_REGISTRY)) {
+            registries.add(FALLBACK_NPM_REGISTRY);
+        }
+        List<String> specs = Arrays.asList(
+                DSH_PACKAGE + "@" + DSH_VERSION,
+                DSH_PACKAGE + "@latest",
+                DSH_PACKAGE + "@next");
+        IOException last = null;
+        for (String registry : registries) {
+            checkCancelled();
+            runInContainer(Arrays.asList("/opt/node/bin/npm", "config", "set", "registry",
+                    registry), 83, 85);
+            for (String spec : specs) {
+                checkCancelled();
+                log("安装 " + spec + "（源 " + registry + "）");
+                try {
+                    runInContainer(Arrays.asList("/opt/node/bin/npm", "install", "-g", spec,
+                            "--no-audit", "--no-fund"), 85, 96);
+                    log("dsh 安装完成：" + spec);
+                    return;
+                } catch (IOException e) {
+                    last = e;
+                    log("⚠ 安装失败，换下一个版本/源重试：" + e.getMessage());
+                }
+            }
+        }
+        throw last != null ? last : new IOException("dsh 安装失败");
     }
 
     /** 在容器里执行命令，日志实时回调，并解析 npm 进度粗略推进百分比。 */
