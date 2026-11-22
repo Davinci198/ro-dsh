@@ -1,4 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">DSH 手机版</string>
+    <string name="app_name">DSH Mobile</string>
+
+    <!-- Terminal -->
+    <string name="term_title">Terminal</string>
+    <string name="term_subtitle">Ubuntu · PRoot sandbox</string>
+    <string name="term_clear">Clear</string>
+    <string name="term_restart">Restart</string>
+    <string name="term_hint">Run a command</string>
+    <string name="term_prompt">root@pocket:~# </string>
+    <string name="term_key_prev">↑</string>
+    <string name="term_key_next">↓</string>
+    <string name="term_key_left">←</string>
+    <string name="term_key_right">→</string>
+    <string name="term_key_esc">ESC</string>
+    <string name="term_key_ctrl_c">CTRL+C</string>
+    <string name="term_key_tab">TAB</string>
+    <string name="term_not_installed">The container is not installed yet. Finish the setup first.\n</string>
+    <string name="term_connected">Connected to the container shell (working directory /home/dsh). If a command hangs, press Restart.\n</string>
+    <string name="term_start_failed">Could not start the shell: %1$s\n</string>
+    <string name="term_session_ended">\n[session ended, press Restart to reconnect]\n</string>
+    <string name="term_not_connected">The shell is not connected. Press Restart.\n</string>
+    <string name="term_write_failed">[write failed: %1$s]\n</string>
 </resources>

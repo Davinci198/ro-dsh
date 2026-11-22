@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">DSH Mobile</string>
+
+    <!-- Terminal -->
+    <string name="term_title">Terminal</string>
+    <string name="term_subtitle">Ubuntu · sandbox PRoot</string>
+    <string name="term_clear">Golește</string>
+    <string name="term_restart">Repornește</string>
+    <string name="term_hint">Scrie o comandă</string>
+    <string name="term_prompt">root@pocket:~# </string>
+    <string name="term_key_prev">↑</string>
+    <string name="term_key_next">↓</string>
+    <string name="term_key_left">←</string>
+    <string name="term_key_right">→</string>
+    <string name="term_key_esc">ESC</string>
+    <string name="term_key_ctrl_c">CTRL+C</string>
+    <string name="term_key_tab">TAB</string>
+    <string name="term_not_installed">Containerul nu este încă instalat. Termină mai întâi inițializarea.\n</string>
+    <string name="term_connected">Conectat la shell-ul containerului (director de lucru /home/dsh). Dacă o comandă se blochează, apasă Repornește.\n</string>
+    <string name="term_start_failed">Shell-ul nu a pornit: %1$s\n</string>
+    <string name="term_session_ended">\n[sesiune încheiată, apasă Repornește pentru reconectare]\n</string>
+    <string name="term_not_connected">Shell-ul nu este conectat. Apasă Repornește.\n</string>
+    <string name="term_write_failed">[scriere eșuată: %1$s]\n</string>
+</resources>
