@@ -187,6 +187,8 @@ public final class ProotRunner {
         inner.add("127.0.0.1");
         inner.add("--port");
         inner.add(String.valueOf(port));
+        // 不加 --no-open 时 dsh 会去拉起系统浏览器，弹出 Chrome 标签页盖住应用
+        inner.add("--no-open");
         return exec(ctx, inner, logFile);
     }
 

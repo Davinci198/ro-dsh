@@ -14,11 +14,15 @@ public final class MobileUiInjector {
     private final String css;
     private final String js;
     private final String earlyPolyfillJs;
+    private final String cssNg;
+    private final String jsNg;
 
     public MobileUiInjector(Context ctx) {
         css = readAsset(ctx, "mobile.css");
         js = readAsset(ctx, "inject.js");
         earlyPolyfillJs = readAsset(ctx, "early-polyfill.js");
+        cssNg = readAsset(ctx, "mobile-ng.css");
+        jsNg = readAsset(ctx, "inject-ng.js");
     }
 
     /** 页面开始加载时注入老 WebView 兼容 polyfill（须在 dsh 自身脚本运行前）。 */
@@ -26,9 +30,24 @@ public final class MobileUiInjector {
         webView.evaluateJavascript(earlyPolyfillJs, null);
     }
 
-    /** 页面加载完成后注入。幂等，可重复调用。 */
+    /**
+     * 页面加载完成后注入。幂等，可重复调用。
+     *
+     * 两代 DOM 分开处理：mobile.css / inject.js 是照 dsh 0.1.0-rc.6 的哈希类名写的，
+     * 0.2.x 换了类名（框架变成了 data-sidebar-* 属性驱动的响应式抽屉）。旧样式在新的
+     * DOM 上不但没用，还会误判：“侧栏是否收起”靠 _collapsed 类判断，新 DOM 没有这个类，
+     * 于是永远判成展开，body 常驻 dsh-mobile-drawer，遮罩盖在全屏上 → 点哪都没反应。
+     * 新 DOM 自带响应式（实测 443px 宽时网格是 0 / 1fr / 0），只需要极小量的兜底样式。
+     */
     public void inject(WebView webView) {
-        String cssJson = toJsString(css);
+        webView.evaluateJavascript(
+                "(function(){try{return !!document.querySelector("
+                        + "'[data-sidebar-drawer],[data-sidebar-mask]');}catch(e){return false;}})()",
+                value -> injectFor(webView, value != null && value.contains("true")));
+    }
+
+    private void injectFor(WebView webView, boolean modern) {
+        String cssJson = toJsString(modern ? cssNg : css);
         String script =
                 "(function(){" +
                 "if(!document.getElementById('dsh-mobile-style')){" +
@@ -41,7 +60,10 @@ public final class MobileUiInjector {
                 "document.head.appendChild(m);}" +
                 "})();";
         webView.evaluateJavascript(script, null);
-        webView.evaluateJavascript(js, null);
+        String extra = modern ? jsNg : js;
+        if (extra != null && !extra.isEmpty()) {
+            webView.evaluateJavascript(extra, null);
+        }
     }
 
     private static String readAsset(Context ctx, String name) {
