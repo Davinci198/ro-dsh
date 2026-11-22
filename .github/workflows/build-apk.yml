@@ -1,0 +1,61 @@
+name: build-apk
+
+# Release APK-ul e semnat cu dsh-mobile/dsh-mobile.keystore (cheia "dshmobile"),
+# deci se poate instala peste orice build anterior făcut cu aceeași cheie.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "dsh-mobile/**"
+      - ".github/workflows/build-apk.yml"
+  pull_request:
+    paths:
+      - "dsh-mobile/**"
+      - ".github/workflows/build-apk.yml"
+  workflow_dispatch:
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Accept SDK licenses
+        run: yes | sdkmanager --licenses > /dev/null || true
+
+      # gradle.properties are aapt2FromMavenOverride=/opt/aapt2-custom/aapt2,
+      # adică o cale din Termux-ul dezvoltatorului; pe runner nu există.
+      # O scoatem doar aici, fișierul din repo rămâne neatins.
+      - name: Drop the local aapt2 override
+        working-directory: dsh-mobile
+        run: sed -i '/^android\.aapt2FromMavenOverride=/d' gradle.properties
+
+      - name: Build signed release + debug
+        working-directory: dsh-mobile
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon --stacktrace assembleRelease assembleDebug
+
+      - name: Show APK certificates
+        run: |
+          find dsh-mobile/app/build/outputs/apk -name '*.apk' -print
+          for f in $(find dsh-mobile/app/build/outputs/apk -name '*.apk'); do
+            echo "== $f"
+            "${ANDROID_HOME}/build-tools/$(ls "${ANDROID_HOME}/build-tools" | tail -1)/apksigner" \
+              verify --print-certs "$f" | grep -E 'DN|SHA-256 digest' || true
+          done
+
+      - name: Upload APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: dsh-mobile-apk
+          path: dsh-mobile/app/build/outputs/apk/**/*.apk
+          if-no-files-found: error
