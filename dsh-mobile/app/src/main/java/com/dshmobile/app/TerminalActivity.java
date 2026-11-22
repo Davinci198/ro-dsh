@@ -57,6 +57,9 @@ public class TerminalActivity extends Activity {
     /** Marker printed after every command so the terminal knows where output ends. */
     private static final String RC_MARKER = "\u0001DSH_RC=";
 
+    /** First byte of the marker; StringBuilder has no lastIndexOf(char). */
+    private static final String MARKER_HEAD = RC_MARKER.substring(0, 1);
+
     /** Output kept per block and in total: a runaway command must not eat the heap. */
     private static final int MAX_BLOCK = 60_000;
     private static final int MAX_TOTAL = 200_000;
@@ -457,7 +460,7 @@ public class TerminalActivity extends Activity {
                 // A marker can arrive split across two reads: hold back everything from
                 // its first byte until its newline shows up, or half a marker would be
                 // printed as if it were command output.
-                int partial = pending.lastIndexOf(RC_MARKER.charAt(0));
+                int partial = pending.lastIndexOf(MARKER_HEAD);
                 int flushUntil = partial >= 0 && pending.indexOf("\n", partial) < 0
                         ? partial
                         : pending.length();

@@ -2,6 +2,26 @@
 <resources>
     <string name="app_name">DSH Mobile</string>
 
+    <!-- Main screen -->
+    <string name="update_title">Version %1$s is available</string>
+    <string name="update_message">You have v%1$s, and %2$s is out.</string>
+    <string name="update_now">Update now</string>
+    <string name="update_later">Later</string>
+    <string name="update_open_failed">No app can open the download link</string>
+    <string name="webview_old">The browser engine is too old (%1$s): the dsh interface may fail or crash. Update Android System WebView or Chrome.</string>
+    <string name="token_expired">The token expired, fetching a new one…</string>
+    <string name="starting_container">Starting the container…</string>
+    <string name="starting_container_seconds">Starting the container… (%1$ds)</string>
+    <string name="container_started_waiting">Container started, waiting for the web service… (%1$ds)</string>
+    <string name="loading_ui">Loading the interface…</string>
+    <string name="wait_timeout">Timed out. Open Settings for the log, or tap Reinstall.</string>
+    <string name="waiting_token">Waiting for the harness to print its access token…</string>
+    <string name="load_failed">The interface failed to load. Open Settings for the log, or tap Reinstall.</string>
+    <string name="service_retry">The web service is not answering, retrying…</string>
+    <string name="settings">Settings</string>
+    <string name="terminal">Terminal</string>
+    <string name="reinstall">Reinstall</string>
+
     <!-- Terminal -->
     <string name="term_title">Terminal</string>
     <string name="term_subtitle">Ubuntu · PRoot sandbox</string>

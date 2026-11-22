@@ -2,6 +2,26 @@
 <resources>
     <string name="app_name">DSH Mobile</string>
 
+    <!-- Ecranul principal -->
+    <string name="update_title">Versiunea %1$s este disponibilă</string>
+    <string name="update_message">Ai v%1$s, iar %2$s este publicată.</string>
+    <string name="update_now">Actualizează acum</string>
+    <string name="update_later">Mai târziu</string>
+    <string name="update_open_failed">Nicio aplicație nu poate deschide linkul de descărcare</string>
+    <string name="webview_old">Motorul de browser este prea vechi (%1$s): interfața dsh poate da erori sau poate cadea. Actualizează Android System WebView sau Chrome.</string>
+    <string name="token_expired">Tokenul a expirat, se obține unul nou…</string>
+    <string name="starting_container">Se pornește containerul…</string>
+    <string name="starting_container_seconds">Se pornește containerul… (%1$ds)</string>
+    <string name="container_started_waiting">Containerul a pornit, se așteaptă serviciul web… (%1$ds)</string>
+    <string name="loading_ui">Se încarcă interfața…</string>
+    <string name="wait_timeout">Timpul a expirat. Deschide Setări pentru jurnal sau apasă Reinstalează.</string>
+    <string name="waiting_token">Se așteaptă ca harness-ul să afișeze tokenul de acces…</string>
+    <string name="load_failed">Interfața nu s-a încărcat. Deschide Setări pentru jurnal sau apasă Reinstalează.</string>
+    <string name="service_retry">Serviciul web nu răspunde, se reîncearcă…</string>
+    <string name="settings">Setări</string>
+    <string name="terminal">Terminal</string>
+    <string name="reinstall">Reinstalează</string>
+
     <!-- Terminal -->
     <string name="term_title">Terminal</string>
     <string name="term_subtitle">Ubuntu · sandbox PRoot</string>
