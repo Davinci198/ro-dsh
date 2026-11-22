@@ -56,6 +56,7 @@ public class MainActivity extends Activity {
             Pattern.compile("[?&]token=([A-Za-z0-9._~-]+)");
     private static final long TOKEN_SCAN_BYTES = 256 * 1024;
     private boolean loadedWithToken;
+    private int authRetries;
     private ValueCallback<Uri[]> fileCallback;
 
     @Override
@@ -234,7 +235,25 @@ public class MainActivity extends Activity {
             public void onPageFinished(WebView view, String url) {
                 if (pageFailed) return;
                 injector.inject(view);
-                dismissSplash();
+                // 401 页也是能正常加载的页面，所以“拿到的是 401 而不是 UI”得自己认：
+                // 令牌轮换/harness 重启后旧 token 失效，这里读一次正文，是认证页就重来。
+                view.evaluateJavascript(
+                        "(document.body&&document.body.innerText||'').slice(0,200)",
+                        text -> {
+                            boolean authPage = text != null
+                                    && text.toLowerCase().contains("authentication required");
+                            if (authPage && authRetries < 5) {
+                                authRetries++;
+                                loadAttempts = 0;
+                                showSplash("令牌已失效，正在重新获取…");
+                                handler.postDelayed(() -> {
+                                    if (!isFinishing()) loadMainUrl();
+                                }, 1500);
+                                return;
+                            }
+                            authRetries = 0;
+                            dismissSplash();
+                        });
             }
 
             @Override
@@ -465,6 +484,17 @@ public class MainActivity extends Activity {
         loadAttempts++;
         String token = harnessPageToken();
         loadedWithToken = token != null;
+        // dsh web 先监听端口、后打印带 token 的地址。这时直接开裸路径会拿到 401
+        // “authentication required” 页面，而 401 是正常响应（不是 load 失败），
+        // onPageFinished 会照常撤启动屏——用户就卡在那张死页上。所以先等 token，
+        // 等不到才退回裸路径（老版本 dsh web 不需要 token）。
+        if (token == null && loadAttempts <= 60) {
+            showSplash("等待 harness 打印访问令牌…");
+            handler.postDelayed(() -> {
+                if (!isFinishing()) loadMainUrl();
+            }, 1000);
+            return;
+        }
         // 没拿到 token 时退回裸根路径：旧版 dsh web 不需要 token，裸路径仍能打开
         webView.loadUrl("http://127.0.0.1:" + port + "/"
                 + (token == null ? "" : "?token=" + token));
@@ -479,7 +509,7 @@ public class MainActivity extends Activity {
      * 只扫尾部，避免安装/运行日志越积越大时整文件读进内存。
      */
     private String harnessPageToken() {
-        File log = new File(ProotRunner.baseDir(this), "dsh-web.log");
+        File log = new File(ProotRunner.logDir(this), "dsh-web.log");
         if (!log.isFile()) return null;
         String tail;
         try (RandomAccessFile raf = new RandomAccessFile(log, "r")) {
@@ -504,7 +534,7 @@ public class MainActivity extends Activity {
     private void scheduleReload() {
         handler.post(() -> {
             if (isFinishing()) return;
-            if (loadAttempts >= 15) {
+            if (loadAttempts >= 90) {
                 showSplash("界面加载失败。请到设置查看日志，或点“重新安装”。");
                 return;
             }
