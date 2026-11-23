@@ -1,13 +1,13 @@
-/* dsh-mobile 注入脚本：处理 SPA 重渲染与软键盘。
-   幂等：重复执行不会叠加副作用。 */
+/* dsh-mobile injection script: handles SPA re-renders and the soft keyboard.
+   Idempotent: running it twice adds no duplicate side effects. */
 (function () {
   'use strict';
   if (window.__dshMobileInjected) return;
   window.__dshMobileInjected = true;
 
-  // 老 WebView（Chrome < 116，Android 12 及以下的系统 WebView 常见）
-  // 没有 AbortSignal.any/timeout，dsh 的工作区选择器等会直接抛
-  // "AbortSignal.any is not a function"（issue #2/#4）。补最小实现。
+  // Older WebViews (Chrome < 116, common as the system WebView on Android 12 and older) have
+  // no AbortSignal.any/timeout and dsh's workspace picker throws
+  // "AbortSignal.any is not a function" straight away (issues #2/#4). Provide a minimal one.
   if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.any !== 'function') {
     AbortSignal.any = function (signals) {
       var ctrl = new AbortController();
