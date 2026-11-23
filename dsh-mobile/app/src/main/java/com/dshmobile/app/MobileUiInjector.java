@@ -8,7 +8,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 
-/** 向 dsh Web UI 注入移动端适配 CSS/JS。 */
+/** Injects the mobile adaptation CSS/JS into the dsh web UI. */
 public final class MobileUiInjector {
 
     private final String css;
@@ -25,19 +25,22 @@ public final class MobileUiInjector {
         jsNg = readAsset(ctx, "inject-ng.js");
     }
 
-    /** 页面开始加载时注入老 WebView 兼容 polyfill（须在 dsh 自身脚本运行前）。 */
+    /** Old-WebView polyfill, injected before the page loads (it must run before dsh's own scripts). */
     public void injectEarlyPolyfill(WebView webView) {
         webView.evaluateJavascript(earlyPolyfillJs, null);
     }
 
     /**
-     * 页面加载完成后注入。幂等，可重复调用。
+     * Injected after the page loads. Idempotent, so it can run repeatedly.
      *
-     * 两代 DOM 分开处理：mobile.css / inject.js 是照 dsh 0.1.0-rc.6 的哈希类名写的，
-     * 0.2.x 换了类名（框架变成了 data-sidebar-* 属性驱动的响应式抽屉）。旧样式在新的
-     * DOM 上不但没用，还会误判：“侧栏是否收起”靠 _collapsed 类判断，新 DOM 没有这个类，
-     * 于是永远判成展开，body 常驻 dsh-mobile-drawer，遮罩盖在全屏上 → 点哪都没反应。
-     * 新 DOM 自带响应式（实测 443px 宽时网格是 0 / 1fr / 0），只需要极小量的兜底样式。
+     * The two DOM generations are handled separately: mobile.css / inject.js were written
+     * against dsh 0.1.0-rc.6's hashed class names, and 0.2.x renamed them (the frame became a
+     * responsive drawer driven by data-sidebar-* attributes). The old styles are not merely
+     * useless on the new DOM, they misjudge it: "is the sidebar collapsed" was decided from
+     * the _collapsed class, which the new DOM never emits, so it was always read as open,
+     * body kept dsh-mobile-drawer and the mask covered the whole screen — every tap landed on
+     * the mask. The new DOM is responsive by itself (443px wide measured a 0 / 1fr / 0 grid),
+     * so it only needs a tiny amount of fallback styling.
      */
     public void inject(WebView webView) {
         webView.evaluateJavascript(
@@ -67,9 +70,10 @@ public final class MobileUiInjector {
     }
 
     private static String readAsset(Context ctx, String name) {
-        // 覆盖入口（开发用）：把同名文件放到外部目录即可替换内置样式/脚本，
-        // 不用重打 APK。dsh 升级后 DOM 类名一变就得调 CSS，这个入口把
-        // "改一行 → CI 构建 3 分钟 → adb install" 缩成 "adb push → 重启 Activity"。
+        // Override hook (for development): dropping a file of the same name into the
+        // external directory replaces the bundled style/script without rebuilding the APK.
+        // A dsh upgrade changes the DOM class names and the CSS has to follow; this turns
+        // "edit a line → 3 minute CI build → adb install" into "adb push → restart activity".
         String override = readOverride(ctx, name);
         if (override != null) return override;
         try (InputStream in = ctx.getAssets().open(name)) {
@@ -85,7 +89,7 @@ public final class MobileUiInjector {
         }
     }
 
-    /** 外部覆盖文件：<外部 files 目录>/ui/<name>，存在且非空时优先于内置 asset。 */
+    /** External override: <external files dir>/ui/<name>, used when it exists and is not empty. */
     private static String readOverride(Context ctx, String name) {
         java.io.File dir = ctx.getExternalFilesDir("ui");
         if (dir == null) return null;

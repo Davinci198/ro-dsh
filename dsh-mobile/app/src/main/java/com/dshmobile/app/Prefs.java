@@ -3,7 +3,7 @@ package com.dshmobile.app;
 import android.content.Context;
 import android.content.SharedPreferences;
 
-/** 应用设置集中读写。 */
+/** Centralised storage for the app's settings. */
 public final class Prefs {
     private static final String NAME = "dsh_settings";
 
@@ -18,8 +18,8 @@ public final class Prefs {
 
     public static final int DEFAULT_SSH_PORT = 8022;
 
-    // 默认走国内镜像（中科大 USTC）：rootfs/Node/Termux 池都有对应目录。
-    // npm registry USTC 没有镜像，用 npmmirror（原淘宝源）。
+    // Defaults are the mirrors that work well from this region: USTC hosts a rootfs, Node and
+    // Termux pool. USTC has no npm mirror, so npmmirror is used for that.
     public static final String DEFAULT_ROOTFS_URL =
             "https://cdimage.ubuntu.com/ubuntu-base/releases/22.04/release/ubuntu-base-22.04.5-base-arm64.tar.gz";
     public static final String DEFAULT_NODE_MIRROR = "https://nodejs.org/dist";
@@ -92,7 +92,7 @@ public final class Prefs {
         sp.edit().putInt(KEY_SSH_PORT, port).apply();
     }
 
-    /** SSH 的 root 密码：首次读取时生成并持久化（换密码=重置后重装生成新的）。 */
+    /** Root password for SSH: generated and persisted on first read (a reset generates a new one). */
     public String getSshPassword() {
         String pw = sp.getString(KEY_SSH_PASSWORD, null);
         if (pw == null || pw.isEmpty()) {

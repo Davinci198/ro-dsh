@@ -10,7 +10,7 @@ import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
-/** DeepSeek 风格 UI 小组件工厂。颜色走资源（values-night 自动切深色）。 */
+/** Small factory for the app's UI pieces. Colours come from resources (values-night switches to dark). */
 public final class Ui {
 
     public static final int PRIMARY = Color.parseColor("#4D6BFE");
@@ -19,7 +19,8 @@ public final class Ui {
     private Ui() {
     }
 
-    // 夜间模式适配：颜色从资源解析，values-night/colors.xml 在系统深色时自动覆盖
+    // Dark-mode support: colours are resolved from resources, and values-night/colors.xml
+    // takes over when the system is in dark mode.
     public static int bg(Context c) {
         return c.getColor(R.color.ds_bg);
     }
@@ -107,7 +108,7 @@ public final class Ui {
         return b;
     }
 
-    /** 白底圆角卡片容器。 */
+    /** Rounded card container on the background colour. */
     public static LinearLayout card(Context ctx) {
         LinearLayout card = new LinearLayout(ctx);
         card.setOrientation(LinearLayout.VERTICAL);
@@ -117,7 +118,7 @@ public final class Ui {
         return card;
     }
 
-    /** 浅灰圆角块（日志区等）。 */
+    /** Light grey rounded block (log areas and the like). */
     public static GradientDrawable softBg(Context ctx) {
         GradientDrawable g = new GradientDrawable();
         g.setColor(bgSoft(ctx));

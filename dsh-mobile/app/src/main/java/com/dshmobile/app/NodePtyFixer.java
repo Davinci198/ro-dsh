@@ -6,12 +6,13 @@ import java.io.File;
 import java.util.Arrays;
 
 /**
- * node-pty 原生模块（pty.node）自检与修复。
+ * node-pty native module (pty.node) check and repair.
  *
- * npm 安装 dsh 时 node-pty 需 node-gyp 现场编译，编译失败（头文件下载被墙、
- * npm 以 root 运行降权等）会被当 optional 依赖静默跳过、安装"成功"，
- * 但 dsh web 启动即崩（subprocess 插件加载 pty.node 失败）。
- * 安装流程与前台服务启动前都调用本类兜底。
+ * When npm installs dsh, node-pty has to be compiled on the spot by node-gyp. A failed
+ * compile (blocked header download, npm running as root and dropping privileges, ...) is
+ * treated as an optional dependency, skipped silently and the install still "succeeds" —
+ * but dsh web then dies on start because its subprocess plugin cannot load pty.node.
+ * Both the install flow and the foreground service call this class as a safety net.
  */
 public final class NodePtyFixer {
 
@@ -23,7 +24,7 @@ public final class NodePtyFixer {
     private NodePtyFixer() {
     }
 
-    /** dsh 已安装但 pty.node 缺失（node-pty 加载时会检查的三个位置都没有）时返回 true。 */
+    /** True when dsh is installed but pty.node is missing (none of the three locations node-pty checks has it). */
     public static boolean needsFix(File rootfs) {
         File dir = new File(rootfs, PTY_DIR);
         if (!dir.isDirectory()) {
@@ -35,13 +36,14 @@ public final class NodePtyFixer {
     }
 
     /**
-     * 容器内用 node-gyp 重建 pty.node。
-     * 先试本地头文件（--nodedir=/opt/node，完全离线）；失败再回退到从 Node
-     * 下载镜像取头文件（--dist-url，与 Node 本体同一个源，安装时已验证可达）。
-     * 工具链（python3/make/g++）由安装流程先行装好。
+     * Rebuilds pty.node with node-gyp inside the container.
+     * It first tries the local headers (--nodedir=/opt/node, fully offline) and falls back to
+     * downloading them from the Node mirror (--dist-url, the same source as Node itself, which
+     * the install already proved reachable). The toolchain (python3/make/g++) is installed by
+     * the install flow beforehand.
      *
-     * @param logFile 追加写 node-gyp 输出的日志文件
-     * @return 修复成功（pty.node 已生成）返回 true
+     * @param logFile file the node-gyp output is appended to
+     * @return true when the repair worked (pty.node exists)
      */
     public static boolean fix(Context ctx, File logFile) {
         File rootfs = ProotRunner.rootfsDir(ctx);
@@ -60,7 +62,7 @@ public final class NodePtyFixer {
                             + NODE_GYP + " rebuild " + gypArgs), logFile);
             p.waitFor();
         } catch (Exception ignored) {
-            // 失败由调用方通过 needsFix 复判
+            // The caller re-checks with needsFix when this fails.
         }
     }
 }

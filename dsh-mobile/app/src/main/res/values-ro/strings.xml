@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">DSH Mobile</string>
+
+    <!-- Ecranul principal -->
+    <string name="update_title">Versiunea %1$s este disponibilă</string>
+    <string name="update_message">Ai v%1$s, iar %2$s este publicată.</string>
+    <string name="update_now">Actualizează acum</string>
+    <string name="update_later">Mai târziu</string>
+    <string name="update_open_failed">Nicio aplicație nu poate deschide linkul de descărcare</string>
+    <string name="webview_old">Motorul de browser este prea vechi (%1$s): interfața dsh poate da erori sau poate cadea. Actualizează Android System WebView sau Chrome.</string>
+    <string name="token_expired">Tokenul a expirat, se obține unul nou…</string>
+    <string name="starting_container">Se pornește containerul…</string>
+    <string name="starting_container_seconds">Se pornește containerul… (%1$ds)</string>
+    <string name="container_started_waiting">Containerul a pornit, se așteaptă serviciul web… (%1$ds)</string>
+    <string name="loading_ui">Se încarcă interfața…</string>
+    <string name="wait_timeout">Timpul a expirat. Deschide Setări pentru jurnal sau apasă Reinstalează.</string>
+    <string name="waiting_token">Se așteaptă ca harness-ul să afișeze tokenul de acces…</string>
+    <string name="load_failed">Interfața nu s-a încărcat. Deschide Setări pentru jurnal sau apasă Reinstalează.</string>
+    <string name="service_retry">Serviciul web nu răspunde, se reîncearcă…</string>
+    <string name="settings">Setări</string>
+    <string name="terminal">Terminal</string>
+    <string name="reinstall">Reinstalează</string>
+    <string name="save">Salvează</string>
+    <string name="cancel">Renunță</string>
+    <string name="close">Închide</string>
+
+    <!-- Ecranul de setări -->
+    <string name="st_title">Setări</string>
+    <string name="st_sd_header">Mapare card SD (container /mnt/sd)</string>
+    <string name="st_all_files">Acces la toate fișierele</string>
+    <string name="st_granted">Acordat ✓</string>
+    <string name="st_not_granted_tap">Neacordat — atinge aici pentru a activa</string>
+    <string name="st_sd_dir">Director SD extern</string>
+    <string name="st_shared_fallback">Spațiu partajat implicit</string>
+    <string name="st_shared_fallback_value">/sdcard/dsh-shared → /mnt/shared (creat automat)</string>
+    <string name="st_service_header">Serviciu</string>
+    <string name="st_web_port">Port web</string>
+    <string name="st_port_saved">Port salvat; se aplică după repornirea serviciului</string>
+    <string name="st_port_invalid">Port invalid</string>
+    <string name="st_service_state">Starea serviciului</string>
+    <string name="st_running">Rulează</string>
+    <string name="st_stopped">Oprit</string>
+    <string name="st_stop_service">Oprește serviciul</string>
+    <string name="st_start_service">Pornește serviciul</string>
+    <string name="st_restart_service">Repornește serviciul</string>
+    <string name="st_ssh_header">SSH în container (pornește cu serviciul)</string>
+    <string name="st_ssh_how">Cum te conectezi</string>
+    <string name="st_ssh_how_value">Pe acest telefon (Terminal/Termux): ssh dsh@127.0.0.1 -p %1$d (utilizator normal, node/npm e deja în PATH; root se conectează cu aceeași parolă). De pe calculator: adb forward tcp:%2$d tcp:%2$d</string>
+    <string name="st_ssh_credentials">Utilizator / parolă</string>
+    <string name="st_ssh_credentials_value">dsh / %1$s (atinge pentru a copia parola)</string>
+    <string name="st_password_copied">Parola a fost copiată</string>
+    <string name="st_ssh_port">Port SSH</string>
+    <string name="st_ssh_port_value">%1$d (schimbă-l dacă se ciocnește cu Termux de pe acest telefon)</string>
+    <string name="st_ssh_port_saved">Port SSH salvat; se aplică după repornirea serviciului</string>
+    <string name="st_keep_header">Supraviețuire în fundal (ca serviciul să nu fie oprit)</string>
+    <string name="st_ignore_battery">Ignoră optimizările de baterie</string>
+    <string name="st_whitelisted">În lista albă ✓</string>
+    <string name="st_not_whitelisted">Nu e în lista albă — atinge aici pentru a activa</string>
+    <string name="st_autostart">Pornire automată / activitate în fundal</string>
+    <string name="st_autostart_value">Rom-urile Honor și similare cer asta manual: atinge aici pentru detaliile aplicației, apoi Consum baterie/Manager pornire → permite pornirea automată și activitatea în fundal</string>
+    <string name="st_no_battery_settings">Nu am putut deschide ecranul de optimizare a bateriei</string>
+    <string name="st_no_app_details">Nu am putut deschide detaliile aplicației</string>
+    <string name="st_mirror_header">Mirror-uri de descărcare (folosite la următoarea instalare)</string>
+    <string name="st_rootfs_url">URL rootfs</string>
+    <string name="st_node_mirror">Mirror Node.js</string>
+    <string name="st_npm_registry">Registry npm</string>
+    <string name="st_maintenance_header">Întreținere</string>
+    <string name="st_file_manager">Manager de fișiere (import/export)</string>
+    <string name="st_open_terminal">Deschide terminalul containerului</string>
+    <string name="st_view_log">Vezi jurnalul de rulare</string>
+    <string name="st_view_install_log">Vezi jurnalul de instalare</string>
+    <string name="st_reset">Resetează containerul (șterge tot)</string>
+    <string name="st_reset_message">Se șterge containerul Ubuntu și toate datele lui. Se reinstalează la următoarea pornire. Continui?</string>
+    <string name="st_reset_confirm">Resetează</string>
+    <string name="st_sd_unset">Nesetat (doar varianta /mnt/shared)</string>
+    <string name="st_sd_missing">  (calea nu există!)</string>
+    <string name="st_need_all_files">Activează mai întâi „Acces la toate fișierele”</string>
+    <string name="st_sd_no_mapping">Fără mapare (doar /mnt/shared)</string>
+    <string name="st_sd_manual">Introdu o cale manual…</string>
+    <string name="st_sd_pick">Alege directorul SD extern</string>
+    <string name="st_sd_mapped">Mapat %1$s → /mnt/sd; se aplică după repornirea serviciului</string>
+    <string name="st_sd_path_title">Calea completă a directorului SD</string>
+    <string name="st_log_read_failed">Citirea a eșuat: %1$s</string>
+    <string name="st_log_empty">(încă nu există jurnal)</string>
+
+    <!-- Terminal -->
+    <string name="term_title">Terminal</string>
+    <string name="term_subtitle">Ubuntu · sandbox PRoot</string>
+    <string name="term_clear">Golește</string>
+    <string name="term_restart">Repornește</string>
+    <string name="term_hint">Scrie o comandă</string>
+    <string name="term_prompt">root@pocket:~# </string>
+    <string name="term_key_prev">↑</string>
+    <string name="term_key_next">↓</string>
+    <string name="term_key_left">←</string>
+    <string name="term_key_right">→</string>
+    <string name="term_key_esc">ESC</string>
+    <string name="term_key_ctrl_c">CTRL+C</string>
+    <string name="term_key_tab">TAB</string>
+    <string name="term_not_installed">Containerul nu este încă instalat. Termină mai întâi inițializarea.\n</string>
+    <string name="term_connected">Conectat la shell-ul containerului (director de lucru /home/dsh). Dacă o comandă se blochează, apasă Repornește.\n</string>
+    <string name="term_start_failed">Shell-ul nu a pornit: %1$s\n</string>
+    <string name="term_session_ended">\n[sesiune încheiată, apasă Repornește pentru reconectare]\n</string>
+    <string name="term_not_connected">Shell-ul nu este conectat. Apasă Repornește.\n</string>
+    <string name="term_write_failed">[scriere eșuată: %1$s]\n</string>
+
+    <!-- Ecranul de instalare inițială -->
+    <string name="setup_title">Prima pornire</string>
+    <string name="setup_hint">Containerul nu este încă instalat. Aplicația descarcă un sistem de fișiere Ubuntu, proot și Node.js, apoi instalează DeepSeek Harness în el. Ține aplicația în prim-plan și conectată: descărcarea are circa 400 MB.</string>
+    <string name="setup_done">Instalare completă. Aplicația pornește…</string>
+    <string name="setup_start">Pornește instalarea</string>
+    <string name="setup_retry">Reîncearcă instalarea</string>
+    <string name="setup_failed">Instalarea a eșuat: %1$s</string>
+
+    <!-- Serviciul din notificare -->
+    <string name="svc_channel_name">Serviciul Harness</string>
+    <string name="svc_channel_description">Ține containerul DeepSeek Harness și serviciul web în funcțiune.</string>
+    <string name="svc_stop_action">Oprește</string>
+    <string name="svc_starting">Se pornește containerul…</string>
+    <string name="svc_fixing_pty">Se repară modulul node-pty…</string>
+    <string name="svc_pty_fixed">node-pty reparat</string>
+    <string name="svc_pty_failed">Repararea node-pty a eșuat, se continuă</string>
+    <string name="svc_running">Harness rulează · port %1$d</string>
+    <string name="svc_gave_up">Serviciul nu a pornit. Deschide aplicația pentru jurnal.</string>
+    <string name="svc_exited_restarting">Serviciul s-a oprit (%1$d), se repornește…</string>
+    <string name="svc_start_failed">Serviciul nu a pornit: %1$s</string>
+    <string name="svc_ssh_failed">SSH nu a pornit (serviciul web nu este afectat): %1$s</string>
+
+    <!-- Managerul de fișiere -->
+    <string name="fm_title">Fișierele containerului</string>
+    <string name="fm_not_installed">Containerul nu este încă instalat.</string>
+    <string name="fm_import">Importă</string>
+    <string name="fm_mkdir">Folder nou</string>
+    <string name="fm_hint">/home/dsh este directorul de lucru folosit de harness. Atinge un folder pentru a-l deschide, ține apăsat pentru mai multe acțiuni.</string>
+    <string name="fm_parent">.. (sus)</string>
+    <string name="fm_export">Exportă în Descărcări</string>
+    <string name="fm_delete">Șterge</string>
+    <string name="fm_delete_confirm">Ștergi %1$s%2$s? Această acțiune nu poate fi anulată.</string>
+    <string name="fm_delete_confirm_dir"> și tot ce este în el</string>
+    <string name="fm_exported">Exportat în %1$s</string>
+    <string name="fm_export_failed">Exportul a eșuat: %1$s</string>
+    <string name="fm_imported">%1$d elemente importate</string>
+    <string name="fm_imported_partial">%1$d elemente importate, %2$d eșuate</string>
+    <string name="fm_import_unreadable">Fișierul selectat nu poate fi citit</string>
+    <string name="fm_folder_name">Numele folderului</string>
+    <string name="fm_create">Creează</string>
+    <string name="fm_create_failed">Folderul nu a putut fi creat</string>
+
+    <!-- Editorul de configurare -->
+    <string name="ce_title">Fișier de configurare</string>
+    <string name="ce_back">Înapoi</string>
+    <string name="ce_template"># configurația dsh se scrie aici. La salvare fișierul este scris în container.</string>
+    <string name="ce_not_created">Fișierul nu există încă. La salvare va fi creat.</string>
+    <string name="ce_read_failed">Fișierul nu a putut fi citit: %1$s</string>
+    <string name="ce_saved">Salvat. Repornește serviciul pentru ca modificarea să se aplice.</string>
+    <string name="ce_saved_toast">Fișier salvat</string>
+    <string name="ce_save_failed">Nu s-a putut salva: %1$s</string>
+</resources>

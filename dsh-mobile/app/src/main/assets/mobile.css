@@ -1,16 +1,16 @@
 /* ============================================================
-   dsh-mobile 移动端适配样式（注入到 DeepSeek Harness Web UI）
-   目标：390px 左右手机竖屏，触控友好，无横向溢出。
-   基于 dsh 0.1.0-rc.6 实际 DOM 结构编写：
-     框架  [class*="_frame"] = sidebarCol | centerCol | detailsCol
-     导航  [class*="_rail"]（左侧图标栏）
-     侧栏  [data-slot="sidebar"] / [class*="_listArea"]
-     弹窗  [role="dialog"] / [class*="_dialog"]
-     输入  [class*="_composer"] / [class*="_input"]
-   类名带构建哈希前缀，故一律用 [class*=片段] 选择器。
+   dsh-mobile adaptation styles (injected into the DeepSeek Harness web UI)
+   Target: a phone in portrait around 390px wide, touch friendly, no horizontal overflow.
+   Written against the real DOM of dsh 0.1.0-rc.6:
+     frame   [class*="_frame"] = sidebarCol | centerCol | detailsCol
+     nav     [class*="_rail"] (icon bar on the left)
+     sidebar [data-slot="sidebar"] / [class*="_listArea"]
+     dialogs [role="dialog"] / [class*="_dialog"]
+     input   [class*="_composer"] / [class*="_input"]
+   Class names carry a build hash prefix, so every selector uses [class*=fragment].
    ============================================================ */
 
-/* ---------- 基础 ---------- */
+/* ---------- Basics ---------- */
 html, body {
   margin: 0;
   padding: 0;

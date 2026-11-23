@@ -16,7 +16,7 @@ import java.io.IOException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-/** 前台服务：持有 proot 容器进程，保证后台存活。 */
+/** Foreground service: owns the PRoot container process so it survives in the background. */
 public class HarnessService extends Service {
 
     public static final String ACTION_START = "com.dshmobile.app.action.START";
@@ -61,10 +61,11 @@ public class HarnessService extends Service {
         String action = intent == null ? ACTION_START : intent.getAction();
         if (ACTION_STOP.equals(action)) {
             wantRun = false;
-            // 停止必须真正杀掉容器与全部服务（通知栏的「停止」= 关机语义）。
-            // 绝不能放进 executor：runLoop 永久占着单线程（while 循环阻塞在
-            // process.waitFor()），stop 任务会排在它后面永远执行不到——
-            // 通知栏停止和设置页停止/重启因此全部失效。独立线程执行停止。
+            // Stopping has to really kill the container and every service in it (the
+            // notification's Stop means "shut down"). It must never be queued on the
+            // executor: runLoop occupies that single thread forever (a while loop blocked
+            // in process.waitFor()), so a queued stop would never run and both the
+            // notification and the settings screen would have no effect. Hence a thread.
             new Thread(() -> {
                 stopContainer();
                 stopForeground(true);
@@ -72,7 +73,7 @@ public class HarnessService extends Service {
             }, "dsh-harness-stop").start();
             return START_NOT_STICKY;
         }
-        startForeground(NOTIF_ID, buildNotification("正在启动容器…"));
+        startForeground(NOTIF_ID, buildNotification(getString(R.string.svc_starting)));
         acquireWakeLock();
         wantRun = true;
         if (!isRunning()) {
@@ -86,17 +87,18 @@ public class HarnessService extends Service {
         int restarts = 0;
         while (wantRun) {
             File log = new File(ProotRunner.logDir(this), "dsh-web.log");
-            // 启动前自检 node-pty：pty.node 缺失时 dsh web 必崩（plugin tree
-            // failed to load），先就地修复再启动，避免无意义的崩溃-重启循环
+            // Check node-pty before starting: without pty.node, dsh web always dies with
+            // "plugin tree failed to load". Fixing it in place first avoids a pointless
+            // crash-restart cycle.
             if (NodePtyFixer.needsFix(ProotRunner.rootfsDir(this))) {
-                updateNotification("正在修复 node-pty 原生模块…");
+                updateNotification(getString(R.string.svc_fixing_pty));
                 boolean fixed = NodePtyFixer.fix(this, log);
-                updateNotification(fixed
-                        ? "node-pty 修复完成，正在启动…"
-                        : "node-pty 修复失败，请到设置查看日志");
+                updateNotification(getString(fixed
+                        ? R.string.svc_pty_fixed
+                        : R.string.svc_pty_failed));
             }
             try {
-                updateNotification("DeepSeek Harness 运行中 · 端口 " + prefs.getPort());
+                updateNotification(getString(R.string.svc_running, prefs.getPort()));
                 startSshd(prefs, log);
                 process = ProotRunner.startWeb(this, prefs.getPort(), log);
                 running = true;
@@ -105,14 +107,14 @@ public class HarnessService extends Service {
                 if (!wantRun) break;
                 restarts++;
                 if (restarts > MAX_RESTART) {
-                    updateNotification("容器多次退出，已停止（详见日志）");
+                    updateNotification(getString(R.string.svc_gave_up));
                     break;
                 }
-                updateNotification("容器退出(" + code + ")，" + 3 + " 秒后重启…");
+                updateNotification(getString(R.string.svc_exited_restarting, code));
                 Thread.sleep(3000);
             } catch (IOException e) {
                 running = false;
-                updateNotification("启动失败: " + e.getMessage());
+                updateNotification(getString(R.string.svc_start_failed, String.valueOf(e.getMessage())));
                 break;
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -127,7 +129,7 @@ public class HarnessService extends Service {
         }
     }
 
-    /** 启动容器内 sshd：老容器没有就先联网补装（失败不影响 Web 服务）。 */
+    /** Starts sshd inside the container: an older container installs it first, and a failure here never affects the web service. */
     private void startSshd(Prefs prefs, File log) {
         BootstrapInstaller.ensureSshServerInstalled(this, log);
         if (!new File(ProotRunner.rootfsDir(this), "usr/sbin/sshd").isFile()) return;
@@ -135,19 +137,19 @@ public class HarnessService extends Service {
         try {
             sshdProcess = ProotRunner.startSshd(this, prefs.getSshPort(), log);
         } catch (IOException e) {
-            updateNotification("SSH 启动失败: " + e.getMessage());
+            updateNotification(getString(R.string.svc_ssh_failed, String.valueOf(e.getMessage())));
         }
     }
 
     private void stopContainer() {
-        // 状态先置 false：设置页/按钮立即反映"已停止"，
-        // 不必等强杀兜底（最长 3s）走完
+        // State goes false first so the settings screen and the buttons show "stopped"
+        // immediately instead of waiting for the hard kill (up to 3s).
         running = false;
         Process p = process;
         if (p != null) {
             p.destroy();
             try {
-                // 有界等待：容器卡住不退时不能无限阻塞（调用方可能在主线程）
+                // Bounded wait: a stuck container must not block forever (the caller may be on the main thread)
                 if (!p.waitFor(3, java.util.concurrent.TimeUnit.SECONDS)) {
                     p.destroyForcibly();
                 }
@@ -184,9 +186,9 @@ public class HarnessService extends Service {
 
     private void createChannel() {
         NotificationManager nm = getSystemService(NotificationManager.class);
-        NotificationChannel ch = new NotificationChannel(CHANNEL_ID, "Harness 服务",
+        NotificationChannel ch = new NotificationChannel(CHANNEL_ID, getString(R.string.svc_channel_name),
                 NotificationManager.IMPORTANCE_LOW);
-        ch.setDescription("DeepSeek Harness 容器运行状态");
+        ch.setDescription(getString(R.string.svc_channel_description));
         nm.createNotificationChannel(ch);
     }
 
@@ -205,7 +207,7 @@ public class HarnessService extends Service {
                 .setContentText(text)
                 .setSmallIcon(android.R.drawable.stat_sys_download_done)
                 .setContentIntent(pi)
-                .addAction(new Notification.Action.Builder(null, "停止", stopPi).build())
+                .addAction(new Notification.Action.Builder(null, getString(R.string.svc_stop_action), stopPi).build())
                 .setOngoing(true)
                 .build();
     }
@@ -231,17 +233,19 @@ public class HarnessService extends Service {
 
     @Override
     public void onTaskRemoved(Intent rootIntent) {
-        // 划卡清任务时最后一搏：趁进程还没被杀，尝试把服务重新拉起来。
-        // Android 12+ 后台起前台服务可能抛异常（ForegroundServiceStartNotAllowed
-        // 等），拦住即可；荣耀/MagicOS 这类划卡杀整进程的 ROM，最终要靠用户在
-        // 系统设置里给本应用开「自启动/允许后台活动」（设置页有入口）。
+        // Last attempt when the task is swiped away: restart the service while the process
+        // is still alive. Android 12+ may refuse to start a foreground service from the
+        // background (ForegroundServiceStartNotAllowed and friends), and ROMs that kill the
+        // whole process on swipe (Honor/MagicOS) can only be handled by the user allowing
+        // autostart and background activity, which the settings screen links to.
         if (wantRun) {
             try {
                 Intent restart = new Intent(this, HarnessService.class);
                 restart.setAction(ACTION_START);
                 startForegroundService(restart);
             } catch (Exception e) {
-                // 后台启动限制：无系统侧授权时无法绕过，交给 START_STICKY 与用户授权兜底
+                // Background start restriction: nothing can bypass it without a system grant,
+                // which is why START_STICKY and the user's allow-list are the fallbacks.
             }
         }
         super.onTaskRemoved(rootIntent);

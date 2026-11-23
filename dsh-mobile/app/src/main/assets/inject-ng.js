@@ -1,11 +1,11 @@
-/* dsh-mobile 注入脚本 —— dsh 0.2.x 分支。
+/* dsh-mobile injection script — the dsh 0.2.x branch.
 
-   0.2.x 的抽屉/遮罩由 dsh 自己管（[data-sidebar-drawer] 框架 +
-   [data-sidebar-mask]），这里不再拦截点击、不改侧栏状态，只做两件
-   dsh 本身不管的小事：
-   1) 老 WebView 缺 AbortSignal.any / AbortSignal.timeout 时补上
-      （早注入的 early-polyfill.js 已经做了，这里兜底一次）；
-   2) 软键盘弹出时把聚焦的输入框滚进可视区。
+   In 0.2.x dsh owns its drawer and mask ([data-sidebar-drawer] frame plus
+   [data-sidebar-mask]), so this script no longer intercepts taps or touches sidebar state.
+   It only handles two small things dsh does not:
+   1) providing AbortSignal.any / AbortSignal.timeout when an old WebView lacks them
+      (early-polyfill.js already does this on page start; this is a second safety net);
+   2) scrolling the focused field into view when the soft keyboard opens.
 */
 (function () {
   'use strict';
