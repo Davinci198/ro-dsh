@@ -67,6 +67,27 @@ public class MainActivity extends Activity {
         requestWindowFeature(Window.FEATURE_NO_TITLE);
 
         Prefs prefs = Prefs.of(this);
+
+        // Automation hook: `adb shell am start -n com.dshmobile.app/.MainActivity --es screen
+        // <screen>` reaches a screen a script cannot tap into. "terminal" and "setup" open those
+        // screens. "reset" performs the container reset the settings screen offers, which is how a
+        // rootfs upgrade is run on a live install. "exec" runs one command inside the container
+        // and appends its output to exec.log in the external files directory, which is the only
+        // way to look inside a container that has lost its coreutils. The two that need no UI are
+        // handled before the setup guard, so they also work while an install is incomplete.
+        String screen = getIntent().getStringExtra("screen");
+        if ("reset".equals(screen)) {
+            resetContainer();
+            return;
+        }
+        if ("exec".equals(screen)) {
+            String cmd = getIntent().getStringExtra("cmd");
+            if (cmd != null && !cmd.isEmpty()) runDebugCommand(cmd);
+            // The activity deliberately stays in front without a screen: a backgrounded uid has
+            // no network on this device, and apt needs one.
+            return;
+        }
+
         // The setup flag alone cannot be trusted after an interrupted reset: the container may be
         // gone while the flag still says ready. Starting the harness in that state used to end in
         // ForegroundServiceDidNotStartInTimeException, which looks like the app crashing on open.
@@ -80,26 +101,13 @@ public class MainActivity extends Activity {
         handler = new Handler(Looper.getMainLooper());
         injector = new MobileUiInjector(this);
 
-        // Automation hook: `adb shell am start -n com.dshmobile.app/.MainActivity --es screen
-        // terminal` opens the container terminal directly. The terminal activity is not
-        // exported (it runs a root shell), so this is the only way to reach it from a script
-        // without tapping the screen. "reset" does the same with the container reset that the
-        // settings screen offers, which is how a rootfs upgrade is performed on a live install.
-        String screen = getIntent().getStringExtra("screen");
         if ("terminal".equals(screen)) {
             startActivity(new Intent(this, TerminalActivity.class));
-        } else if ("reset".equals(screen)) {
-            resetContainer();
         } else if ("setup".equals(screen)) {
             // Resumes the installer without wiping anything: an interrupted install picks up at
             // the first stage that is not already done.
             startActivity(new Intent(this, SetupActivity.class));
             finish();
-        } else if ("exec".equals(screen)) {
-            // Debug channel: runs one command inside the container and leaves its output in a file
-            // adb can read, which is how a broken container gets diagnosed without tapping.
-            String cmd = getIntent().getStringExtra("cmd");
-            if (cmd != null && !cmd.isEmpty()) runDebugCommand(cmd);
         }
 
         // WebView remote debugging: the injected CSS/JS depends on dsh's DOM class
