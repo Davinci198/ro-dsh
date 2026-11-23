@@ -92,16 +92,6 @@ public class HarnessService extends Service {
         int restarts = 0;
         while (wantRun) {
             File log = new File(ProotRunner.logDir(this), "dsh-web.log");
-            // Check node-pty before starting: without pty.node, dsh web always dies with
-            // "plugin tree failed to load". Fixing it in place first avoids a pointless
-            // crash-restart cycle.
-            if (NodePtyFixer.needsFix(ProotRunner.rootfsDir(this))) {
-                updateNotification(getString(R.string.svc_fixing_pty));
-                boolean fixed = NodePtyFixer.fix(this, log);
-                updateNotification(getString(fixed
-                        ? R.string.svc_pty_fixed
-                        : R.string.svc_pty_failed));
-            }
             try {
                 updateNotification(getString(R.string.svc_running, prefs.getPort()));
                 startSshd(prefs, log);

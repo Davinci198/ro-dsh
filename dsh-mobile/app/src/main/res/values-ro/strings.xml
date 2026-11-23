@@ -130,9 +130,6 @@
     <string name="svc_channel_description">Ține containerul DeepSeek Harness și serviciul web în funcțiune.</string>
     <string name="svc_stop_action">Oprește</string>
     <string name="svc_starting">Se pornește containerul…</string>
-    <string name="svc_fixing_pty">Se repară modulul node-pty…</string>
-    <string name="svc_pty_fixed">node-pty reparat</string>
-    <string name="svc_pty_failed">Repararea node-pty a eșuat, se continuă</string>
     <string name="svc_running">Harness rulează · port %1$d</string>
     <string name="svc_stopping">Se oprește harness-ul…</string>
     <string name="svc_gave_up">Serviciul nu a pornit. Deschide aplicația pentru jurnal.</string>

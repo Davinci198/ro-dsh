@@ -129,9 +129,6 @@
     <string name="svc_channel_description">Keeps the DeepSeek Harness container and its web service running.</string>
     <string name="svc_stop_action">Stop</string>
     <string name="svc_starting">Starting the container…</string>
-    <string name="svc_fixing_pty">Repairing the node-pty module…</string>
-    <string name="svc_pty_fixed">node-pty repaired</string>
-    <string name="svc_pty_failed">node-pty repair failed, continuing</string>
     <string name="svc_running">Harness running · port %1$d</string>
     <string name="svc_stopping">Stopping the harness…</string>
     <string name="svc_gave_up">The service could not start. Open the app to see the log.</string>

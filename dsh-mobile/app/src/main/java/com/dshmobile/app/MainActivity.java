@@ -76,23 +76,7 @@ public class MainActivity extends Activity {
         // way to look inside a container that has lost its coreutils. The two that need no UI are
         // handled before the setup guard, so they also work while an install is incomplete.
         String screen = getIntent().getStringExtra("screen");
-        if ("reset".equals(screen)) {
-            resetContainer();
-            return;
-        }
-        if ("exec".equals(screen)) {
-            String cmd = getIntent().getStringExtra("cmd");
-            // The activity deliberately stays in front without the app UI: a backgrounded uid has
-            // no network on this device, and apt needs one. A visible note keeps it from looking
-            // like a black screen.
-            android.widget.TextView note = new android.widget.TextView(this);
-            note.setText(getString(R.string.debug_running, String.valueOf(cmd)));
-            note.setTextColor(0xFF9AA0A6);
-            note.setPadding(48, 160, 48, 48);
-            setContentView(note);
-            if (cmd != null && !cmd.isEmpty()) runDebugCommand(cmd);
-            return;
-        }
+        if (handleColdAutomationHook(screen)) return;
 
         // The setup flag alone cannot be trusted after an interrupted reset: the container may be
         // gone while the flag still says ready. Starting the harness in that state used to end in
@@ -685,11 +669,7 @@ public class MainActivity extends Activity {
         }
     }
 
-    /**
-     * Wipes the container and hands over to the first-run installer. A stored 26.04 rootfs URL
-     * would reinstall the base whose apt cannot build inside proot, so it is dropped in favour of
-     * the current default; a custom mirror URL is kept as it is.
-     */
+    /** Runs one command inside the container and appends its output to exec.log. */
     private void runDebugCommand(String cmd) {
         File log = new File(getExternalFilesDir(null), "exec.log");
         new Thread(() -> {
@@ -707,6 +687,36 @@ public class MainActivity extends Activity {
         }, "dsh-exec").start();
     }
 
+    /**
+     * Runs the hooks that must work before the setup guard, on a cold start. Returns true when the
+     * hook took over the screen, leaving onCreate nothing to do.
+     */
+    private boolean handleColdAutomationHook(String screen) {
+        if ("reset".equals(screen)) {
+            resetContainer();
+            return true;
+        }
+        if ("exec".equals(screen)) {
+            String cmd = getIntent().getStringExtra("cmd");
+            // The activity deliberately stays in front without the app UI: a backgrounded uid has
+            // no network on this device, and apt needs one. A visible note keeps it from looking
+            // like a black screen.
+            android.widget.TextView note = new android.widget.TextView(this);
+            note.setText(getString(R.string.debug_running, String.valueOf(cmd)));
+            note.setTextColor(0xFF9AA0A6);
+            note.setPadding(48, 160, 48, 48);
+            setContentView(note);
+            if (cmd != null && !cmd.isEmpty()) runDebugCommand(cmd);
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Wipes the container and hands over to the first-run installer. A stored rootfs URL that is
+     * no longer the default is dropped in favour of it, so a reset lands on the shipped base; a
+     * custom mirror URL is kept as it is.
+     */
     private void resetContainer() {
         Prefs prefs = Prefs.of(this);
         HarnessService.stopService(this);
@@ -743,7 +753,30 @@ public class MainActivity extends Activity {
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
-        // Never loaded successfully and the splash is still up: start polling again.
+        setIntent(intent);
+        String screen = intent.getStringExtra("screen");
+        // A hook that arrives while the activity is already up is served in place, so a scripted
+        // check no longer has to force-stop the app (which also kills the harness).
+        if ("exec".equals(screen)) {
+            String cmd = intent.getStringExtra("cmd");
+            if (cmd != null && !cmd.isEmpty()) runDebugCommand(cmd);
+            return;
+        }
+        if ("terminal".equals(screen)) {
+            startActivity(new Intent(this, TerminalActivity.class));
+            return;
+        }
+        if ("reset".equals(screen)) {
+            resetContainer();
+            return;
+        }
+        if ("setup".equals(screen)) {
+            startActivity(new Intent(this, SetupActivity.class));
+            finish();
+            return;
+        }
+        // No hook: this is the normal re-entry. Never loaded successfully and the splash is still
+        // up, so start polling again.
         if (webView != null && splash.getVisibility() == View.VISIBLE
                 && (webView.getUrl() == null || pageFailed)) {
             loadAttempts = 0;

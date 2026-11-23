@@ -269,28 +269,9 @@ public final class BootstrapInstaller {
                 log("dsh already installed, skipped");
             }
 
-            // 5b. Verify the node-pty native module. While npm installs dsh, node-pty has to be
-            // compiled by node-gyp, and a failed compile (usually a blocked header download) is
-            // treated as an optional dependency: skipped silently, install "succeeds", and dsh web
-            // then dies on start because its subprocess plugin cannot load pty.node. This step is
-            // independent of the install above so a broken tree can be repaired by re-running it;
-            // HarnessService repeats the same check before starting the service.
-            if (NodePtyFixer.needsFix(rootfs)) {
-                if (!new File(rootfs, "usr/bin/g++").isFile()) {
-                    // The toolchain step was skipped or failed, so this cannot compile. Do not
-                    // fail hard: HarnessService retries with the toolchain once the network is back.
-                    log("⚠ No build toolchain, skipping the node-pty build (the service retries it)");
-                } else {
-                    stage("Building the node-pty native module", 97);
-                    log("node-pty has no pty.node; rebuilding it in the container…");
-                    File installLog = new File(ProotRunner.baseDir(ctx), "install.log");
-                    if (!NodePtyFixer.fix(ctx, installLog)) {
-                        throw new IOException("Rebuilding the node-pty native module failed; see the log in Settings");
-                    }
-                    log("The node-pty native module is ready");
-                }
-            }
-
+            // 5b. The node-pty step is gone on purpose: dsh 0.2.2 ships no node-pty native module
+            // (the container has no pty.node at all), so the old rebuild loop was dead weight that
+            // could only fail. The build toolchain stays installed for plugins that do need it.
             checkCancelled();
             // 6. SSH service, so local terminals (Termux, adb forward) can reach the container
             ensureSshServer(rootfs);
