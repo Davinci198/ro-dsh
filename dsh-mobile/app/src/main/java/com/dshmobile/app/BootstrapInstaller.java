@@ -654,7 +654,7 @@ public final class BootstrapInstaller {
         return pool + latest;
     }
 
-    /** Resolves the newest Node v22 linux-arm64 tarball.
+    /** Resolves the newest Node v22 linux-arm64 tarball. */
     private String resolveNodeUrl() throws IOException {
         String base = prefs.getNodeMirror();
         if (base.endsWith("/")) base = base.substring(0, base.length() - 1);

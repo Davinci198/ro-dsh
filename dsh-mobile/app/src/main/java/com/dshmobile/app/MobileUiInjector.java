@@ -41,6 +41,7 @@ public final class MobileUiInjector {
      * body kept dsh-mobile-drawer and the mask covered the whole screen — every tap landed on
      * the mask. The new DOM is responsive by itself (443px wide measured a 0 / 1fr / 0 grid),
      * so it only needs a tiny amount of fallback styling.
+     */
     public void inject(WebView webView) {
         webView.evaluateJavascript(
                 "(function(){try{return !!document.querySelector("
