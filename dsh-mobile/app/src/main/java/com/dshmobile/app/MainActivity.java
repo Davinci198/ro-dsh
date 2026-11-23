@@ -79,9 +79,13 @@ public class MainActivity extends Activity {
         // Automation hook: `adb shell am start -n com.dshmobile.app/.MainActivity --es screen
         // terminal` opens the container terminal directly. The terminal activity is not
         // exported (it runs a root shell), so this is the only way to reach it from a script
-        // without tapping the screen. Anything other than "terminal" is ignored.
-        if ("terminal".equals(getIntent().getStringExtra("screen"))) {
+        // without tapping the screen. "reset" does the same with the container reset that the
+        // settings screen offers, which is how a rootfs upgrade is performed on a live install.
+        String screen = getIntent().getStringExtra("screen");
+        if ("terminal".equals(screen)) {
             startActivity(new Intent(this, TerminalActivity.class));
+        } else if ("reset".equals(screen)) {
+            resetContainer();
         }
 
         // WebView remote debugging: the injected CSS/JS depends on dsh's DOM class
@@ -647,6 +651,27 @@ public class MainActivity extends Activity {
         } finally {
             if (conn != null) conn.disconnect();
         }
+    }
+
+    /**
+     * Wipes the container and hands over to the first-run installer. A stored 22.04 rootfs URL
+     * would reinstall the release being replaced, so it is dropped in favour of the current
+     * default; a custom mirror URL is kept as it is.
+     */
+    private void resetContainer() {
+        Prefs prefs = Prefs.of(this);
+        HarnessService.stopService(this);
+        new Thread(() -> {
+            if (prefs.getRootfsUrl().contains("22.04")) {
+                prefs.setRootfsUrl(Prefs.DEFAULT_ROOTFS_URL);
+            }
+            BootstrapInstaller.deleteRecursively(ProotRunner.baseDir(this));
+            prefs.setSetupDone(false);
+            runOnUiThread(() -> {
+                startActivity(new Intent(this, SetupActivity.class));
+                finish();
+            });
+        }, "dsh-reset").start();
     }
 
     @Override
