@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- 夜间模式配色：跟随系统自动启用 -->
+    <!-- Dark-mode palette, applied automatically when the system is in dark mode -->
     <color name="ds_bg">#14171B</color>
     <color name="ds_bg_soft">#0C0E11</color>
     <color name="ds_text">#E6E8EB</color>

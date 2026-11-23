@@ -17,11 +17,12 @@ import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
-/** 首启安装向导：DeepSeek 风格，下载/解压/安装进度与日志。 */
+/** First-run installer: download, unpack and install progress with a live log. */
 public class SetupActivity extends Activity implements BootstrapInstaller.Listener {
 
-    /** 安装线程全局唯一标志：旋转屏幕/系统重建 Activity 会重跑 onCreate，
-     *  没有它就会出现两个安装线程并发写同一 rootfs（issue #6）。 */
+    /** Only one install thread may exist in the process: a rotation or a system-initiated
+     *  recreation runs onCreate again, and without this two installers would write the same
+     *  rootfs at the same time. */
     private static volatile boolean installRunning;
 
     private ProgressBar progress;
@@ -48,12 +49,11 @@ public class SetupActivity extends Activity implements BootstrapInstaller.Listen
         int pad = Ui.dp(this, 20);
         root.setPadding(pad, pad, pad, pad);
 
-        // 顶部标题区
+        // Title block
         LinearLayout header = Ui.card(this);
-        TextView title = Ui.title(this, "初始化 Ubuntu 容器");
+        TextView title = Ui.title(this, getString(R.string.setup_title));
         header.addView(title);
-        TextView hint = Ui.hint(this,
-                "首次启动需要联网下载约 400MB（Ubuntu + 编译工具链 + Node.js + DeepSeek Harness），请保持网络畅通。");
+        TextView hint = Ui.hint(this, getString(R.string.setup_hint));
         LinearLayout.LayoutParams hlp = Ui.matchWrap();
         hlp.topMargin = Ui.dp(this, 8);
         header.addView(hint, hlp);
@@ -76,7 +76,7 @@ public class SetupActivity extends Activity implements BootstrapInstaller.Listen
 
         root.addView(header, Ui.matchWrap());
 
-        // 日志区
+        // log area
         ScrollView scroll = new ScrollView(this);
         scroll.setBackground(Ui.softBg(this));
         int lp2 = Ui.dp(this, 12);
@@ -95,7 +95,7 @@ public class SetupActivity extends Activity implements BootstrapInstaller.Listen
         logView.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, orr, ob) ->
                 scroll.post(() -> scroll.fullScroll(View.FOCUS_DOWN)));
 
-        actionBtn = Ui.primaryButton(this, "取消");
+        actionBtn = Ui.primaryButton(this, getString(R.string.cancel));
         actionBtn.setOnClickListener(v -> {
             if (done) {
                 startActivity(new Intent(this, MainActivity.class));
@@ -115,8 +115,9 @@ public class SetupActivity extends Activity implements BootstrapInstaller.Listen
 
     private void startInstall() {
         if (installRunning) {
-            // 已有安装线程在跑（重建前的实例仍在工作）：本实例退出，
-            // 安装在后台完成，下次启动按 setupDone 自动进主界面
+            // An install thread is already running (the instance from before the recreation
+            // is still working): this instance steps aside, the install finishes in the
+            // background, and the next start enters the main screen on setupDone.
             finish();
             return;
         }
@@ -156,18 +157,18 @@ public class SetupActivity extends Activity implements BootstrapInstaller.Listen
         handler.post(() -> {
             done = true;
             if (success) {
-                stageText.setText("安装完成 ✓");
+                stageText.setText(getString(R.string.setup_done));
                 stageText.setTextColor(Ui.PRIMARY);
-                actionBtn.setText("开始使用");
+                actionBtn.setText(getString(R.string.setup_start));
             } else {
-                stageText.setText("安装失败：" + error);
+                stageText.setText(getString(R.string.setup_failed, error == null ? "" : error));
                 stageText.setTextColor(0xFFE54545);
-                actionBtn.setText("重试");
+                actionBtn.setText(getString(R.string.setup_retry));
                 actionBtn.setOnClickListener(v -> {
                     logView.setText("");
                     progress.setProgress(0);
                     stageText.setTextColor(Ui.PRIMARY);
-                    actionBtn.setText("取消");
+                    actionBtn.setText(getString(R.string.cancel));
                     actionBtn.setOnClickListener(x -> finish());
                     startInstall();
                 });

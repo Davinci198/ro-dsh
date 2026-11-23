@@ -20,10 +20,11 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 
 /**
- * dsh 配置文件（容器内 /home/dsh/.dsh/settings.yaml）的原生编辑器。
- * dsh web 桌面的「打开配置文件」调 xdg-open/编辑器，容器里没有必然失败；
- * 网页侧由 inject.js 拦截按钮点击改走 JS 桥打开本页面。
- * dsh-settings-file 用 chokidar 监听该文件，保存后自动热加载，无需重启服务。
+ * Native editor for the dsh config file (/home/dsh/.dsh/settings.yaml in the container).
+ * The dsh web desktop's "open config file" action runs xdg-open, which cannot work here; the
+ * page side is intercepted by inject.js, which routes the button through the JS bridge to
+ * this screen. The dsh-settings-file plugin watches the file with chokidar and reloads it on
+ * save, so no service restart is needed.
  */
 public class ConfigEditorActivity extends Activity {
 
@@ -47,7 +48,7 @@ public class ConfigEditorActivity extends Activity {
         root.setPadding(pad, pad, pad, pad);
         root.setBackgroundColor(Ui.bg(this));
 
-        TextView title = Ui.title(this, "配置文件");
+        TextView title = Ui.title(this, getString(R.string.ce_title));
         root.addView(title);
 
         TextView path = Ui.hint(this, configFile.getAbsolutePath());
@@ -81,10 +82,10 @@ public class ConfigEditorActivity extends Activity {
         btns.setGravity(Gravity.END);
         LinearLayout.LayoutParams blp = Ui.matchWrap();
         blp.topMargin = Ui.dp(this, 8);
-        Button cancel = Ui.outlineButton(this, "返回");
+        Button cancel = Ui.outlineButton(this, getString(R.string.ce_back));
         cancel.setOnClickListener(v -> finish());
         btns.addView(cancel);
-        Button save = Ui.primaryButton(this, "保存");
+        Button save = Ui.primaryButton(this, getString(R.string.save));
         LinearLayout.LayoutParams s2 = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, Ui.dp(this, 48));
         s2.leftMargin = Ui.dp(this, 16);
@@ -98,9 +99,9 @@ public class ConfigEditorActivity extends Activity {
 
     private void loadFile() {
         if (!configFile.isFile()) {
-            // 文件不存在时给一份带注释的空文档（dsh 的 prepareDocument 也是给空文件）
-            editor.setText("# dsh settings\n# 命名空间配置项见设置弹窗；保存后 dsh 自动热加载。\n");
-            status.setText("文件尚不存在，保存时创建");
+            // A missing file gets a commented empty document (dsh's prepareDocument does the same).
+            editor.setText(getString(R.string.ce_template));
+            status.setText(R.string.ce_not_created);
             return;
         }
         try {
@@ -110,11 +111,11 @@ public class ConfigEditorActivity extends Activity {
             in.close();
             editor.setText(new String(buf, 0, Math.max(n, 0), StandardCharsets.UTF_8));
         } catch (IOException e) {
-            status.setText("读取失败：" + e.getMessage());
+            status.setText(getString(R.string.ce_read_failed, String.valueOf(e.getMessage())));
         }
     }
 
-    /** 写临时文件再 rename（原子替换），避免 dsh 的 watcher 读到半截内容。 */
+    /** Writes a temp file and renames it (atomic replace) so dsh's watcher never sees half a file. */
     private void saveFile() {
         try {
             File dir = configFile.getParentFile();
@@ -127,10 +128,10 @@ public class ConfigEditorActivity extends Activity {
             if (!tmp.renameTo(configFile)) {
                 throw new IOException("rename failed");
             }
-            status.setText("已保存（dsh 自动热加载，无需重启）");
-            Toast.makeText(this, "配置已保存", Toast.LENGTH_SHORT).show();
+            status.setText(R.string.ce_saved);
+            Toast.makeText(this, R.string.ce_saved_toast, Toast.LENGTH_SHORT).show();
         } catch (IOException e) {
-            status.setText("保存失败：" + e.getMessage());
+            status.setText(getString(R.string.ce_save_failed, String.valueOf(e.getMessage())));
         }
     }
 }

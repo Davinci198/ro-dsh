@@ -4,7 +4,7 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- DeepSeek 风格：圆角白底 + 品牌蓝鲸鱼抽象 -->
+    <!-- DeepSeek style: rounded white background with an abstracted brand-blue whale -->
     <path
         android:fillColor="#4D6BFE"
         android:pathData="M24,24h60a12,12 0 0 1 12,12v36a12,12 0 0 1 -12,12H24a12,12 0 0 1 -12,-12V36a12,12 0 0 1 12,-12z" />

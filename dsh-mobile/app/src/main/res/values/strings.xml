@@ -103,4 +103,56 @@
     <string name="term_session_ended">\n[session ended, press Restart to reconnect]\n</string>
     <string name="term_not_connected">The shell is not connected. Press Restart.\n</string>
     <string name="term_write_failed">[write failed: %1$s]\n</string>
+
+    <!-- Setup screen -->
+    <string name="setup_title">First run</string>
+    <string name="setup_hint">The container is not installed yet. The app downloads an Ubuntu root filesystem, proot and Node.js, then installs DeepSeek Harness inside it. Keep the app in the foreground and connected: the download is about 400 MB.</string>
+    <string name="setup_done">Installation complete. The app is starting…</string>
+    <string name="setup_start">Start installation</string>
+    <string name="setup_retry">Retry installation</string>
+    <string name="setup_failed">Installation failed: %1$s</string>
+
+    <!-- Notification service -->
+    <string name="svc_channel_name">Harness service</string>
+    <string name="svc_channel_description">Keeps the DeepSeek Harness container and its web service running.</string>
+    <string name="svc_stop_action">Stop</string>
+    <string name="svc_starting">Starting the container…</string>
+    <string name="svc_fixing_pty">Repairing the node-pty module…</string>
+    <string name="svc_pty_fixed">node-pty repaired</string>
+    <string name="svc_pty_failed">node-pty repair failed, continuing</string>
+    <string name="svc_running">Harness running · port %1$d</string>
+    <string name="svc_gave_up">The service could not start. Open the app to see the log.</string>
+    <string name="svc_exited_restarting">The service exited (%1$d), restarting…</string>
+    <string name="svc_start_failed">The service failed to start: %1$s</string>
+    <string name="svc_ssh_failed">SSH did not start (the web service is unaffected): %1$s</string>
+
+    <!-- File manager -->
+    <string name="fm_title">Container files</string>
+    <string name="fm_not_installed">The container is not installed yet.</string>
+    <string name="fm_import">Import</string>
+    <string name="fm_mkdir">New folder</string>
+    <string name="fm_hint">/home/dsh is the working directory used by the harness. Tap a folder to open it, long-press an entry for more actions.</string>
+    <string name="fm_parent">.. (up)</string>
+    <string name="fm_export">Export to Downloads</string>
+    <string name="fm_delete">Delete</string>
+    <string name="fm_delete_confirm">Delete %1$s%2$s? This cannot be undone.</string>
+    <string name="fm_delete_confirm_dir"> and everything inside it</string>
+    <string name="fm_exported">Exported to %1$s</string>
+    <string name="fm_export_failed">Export failed: %1$s</string>
+    <string name="fm_imported">Imported %1$d items</string>
+    <string name="fm_imported_partial">Imported %1$d items, %2$d failed</string>
+    <string name="fm_import_unreadable">The selected file cannot be read</string>
+    <string name="fm_folder_name">Folder name</string>
+    <string name="fm_create">Create</string>
+    <string name="fm_create_failed">Could not create the folder</string>
+
+    <!-- Config editor -->
+    <string name="ce_title">Configuration file</string>
+    <string name="ce_back">Back</string>
+    <string name="ce_template"># dsh configuration goes here. Saving writes the file into the container.</string>
+    <string name="ce_not_created">The file does not exist yet. Saving creates it.</string>
+    <string name="ce_read_failed">Could not read the file: %1$s</string>
+    <string name="ce_saved">Saved. Restart the service for the change to apply.</string>
+    <string name="ce_saved_toast">File saved</string>
+    <string name="ce_save_failed">Could not save: %1$s</string>
 </resources>
