@@ -368,6 +368,31 @@ public final class BootstrapInstaller {
         }
     }
 
+    /**
+     * Reads VERSION_CODENAME out of the unpacked base, which is what apt sources have to name.
+     * Falls back to jammy so a rootfs without os-release keeps the previous behaviour.
+     */
+    private static String rootfsCodename(File rootfs) {
+        File os = new File(rootfs, "etc/os-release");
+        if (os.isFile()) {
+            try (java.io.BufferedReader r = new java.io.BufferedReader(
+                    new java.io.FileReader(os))) {
+                String line;
+                while ((line = r.readLine()) != null) {
+                    line = line.trim();
+                    if (line.startsWith("VERSION_CODENAME=")) {
+                        String v = line.substring("VERSION_CODENAME=".length())
+                                .replace("\"", "").trim();
+                        if (!v.isEmpty()) return v;
+                    }
+                }
+            } catch (IOException ignored) {
+                // Falls through to the default below.
+            }
+        }
+        return "jammy";
+    }
+
     private void writeContainerConfig(File rootfs) throws IOException {
         File etc = new File(rootfs, "etc");
         //noinspection ResultOfMethodCallIgnored
@@ -385,11 +410,15 @@ public final class BootstrapInstaller {
         // comes from InRelease signature checks, and http is the documented way to use an Ubuntu
         // mirror.
         File sources = new File(etc, "apt");
+        // The suite name follows the unpacked base (jammy for 22.04, resolute for 26.04), so a
+        // different rootfs URL does not leave apt pointing at a release that was not installed.
+        String codename = rootfsCodename(rootfs);
+        log("apt suite: " + codename);
         //noinspection ResultOfMethodCallIgnored
         sources.mkdirs();
-        String list = "deb http://ports.ubuntu.com jammy main restricted universe multiverse\n"
-                + "deb http://ports.ubuntu.com jammy-updates main restricted universe multiverse\n"
-                + "deb http://ports.ubuntu.com jammy-security main restricted universe multiverse\n";
+        String list = "deb http://ports.ubuntu.com " + codename + " main restricted universe multiverse\n"
+                + "deb http://ports.ubuntu.com " + codename + "-updates main restricted universe multiverse\n"
+                + "deb http://ports.ubuntu.com " + codename + "-security main restricted universe multiverse\n";
         Files.write(new File(sources, "sources.list").toPath(), list.getBytes(StandardCharsets.UTF_8));
         //noinspection ResultOfMethodCallIgnored
         new File(rootfs, "mnt/sd").mkdirs();

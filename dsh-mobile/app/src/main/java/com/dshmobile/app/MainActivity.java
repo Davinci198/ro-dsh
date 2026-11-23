@@ -17,6 +17,7 @@ import android.view.Window;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -57,6 +58,7 @@ public class MainActivity extends Activity {
     private static final long TOKEN_SCAN_BYTES = 256 * 1024;
     private boolean loadedWithToken;
     private int authRetries;
+    private int httpErrorRetries;
     private ValueCallback<Uri[]> fileCallback;
 
     @Override
@@ -264,8 +266,24 @@ public class MainActivity extends Activity {
                                 return;
                             }
                             authRetries = 0;
+                            httpErrorRetries = 0;
                             dismissSplash();
                         });
+            }
+
+            @Override
+            public void onReceivedHttpError(WebView view, WebResourceRequest request,
+                                            WebResourceResponse errorResponse) {
+                if (!request.isForMainFrame()) return;
+                int code = errorResponse == null ? 0 : errorResponse.getStatusCode();
+                // Neither of these answers a readable page: a 401 means the token in the URL
+                // died with the previous harness process, a 5xx means dsh web is up but broken.
+                // The WebView then renders net::ERR_HTTP_RESPONSE_CODE_FAILURE, which carries no
+                // text to inspect, so the status code is the only signal to act on.
+                if (code == 401 || code == 403 || code >= 500) {
+                    pageFailed = true;
+                    recoverFromHttpError(code);
+                }
             }
 
             @Override
@@ -543,6 +561,43 @@ public class MainActivity extends Activity {
             last = m.group(1);
         }
         return last;
+    }
+
+    /**
+     * A non-2xx answer for the main frame. The token rotates on every harness restart, so the
+     * first attempts just re-read the log tail and reload; only a server that keeps failing is
+     * restarted, and a restart is what mints a new token anyway.
+     */
+    private void recoverFromHttpError(int code) {
+        if (isFinishing()) return;
+        httpErrorRetries++;
+        loadAttempts = 0;
+        if (httpErrorRetries <= 2) {
+            showSplash(getString(R.string.token_expired));
+            handler.postDelayed(() -> {
+                if (!isFinishing()) loadMainUrl();
+            }, 1200);
+            return;
+        }
+        if (httpErrorRetries <= 4) {
+            showSplash(getString(R.string.service_retry));
+            restartHarness();
+            return;
+        }
+        httpErrorRetries = 0;
+        showSplash(getString(R.string.load_failed));
+    }
+
+    /** Stops dsh web and starts it again, which also prints a fresh access token. */
+    private void restartHarness() {
+        HarnessService.stopService(this);
+        handler.postDelayed(() -> {
+            if (isFinishing()) return;
+            HarnessService.startService(this);
+            handler.postDelayed(() -> {
+                if (!isFinishing()) loadMainUrl();
+            }, 3000);
+        }, 2000);
     }
 
     /** Main frame failed: show the splash again and retry a bounded number of times. */
