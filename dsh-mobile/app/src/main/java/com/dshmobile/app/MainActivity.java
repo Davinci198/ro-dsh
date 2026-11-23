@@ -663,15 +663,15 @@ public class MainActivity extends Activity {
     }
 
     /**
-     * Wipes the container and hands over to the first-run installer. A stored 22.04 rootfs URL
-     * would reinstall the release being replaced, so it is dropped in favour of the current
-     * default; a custom mirror URL is kept as it is.
+     * Wipes the container and hands over to the first-run installer. A stored 26.04 rootfs URL
+     * would reinstall the base whose apt cannot build inside proot, so it is dropped in favour of
+     * the current default; a custom mirror URL is kept as it is.
      */
     private void resetContainer() {
         Prefs prefs = Prefs.of(this);
         HarnessService.stopService(this);
         new Thread(() -> {
-            if (prefs.getRootfsUrl().contains("22.04")) {
+            if (prefs.getRootfsUrl().contains("26.04")) {
                 prefs.setRootfsUrl(Prefs.DEFAULT_ROOTFS_URL);
             }
             BootstrapInstaller.resetToFreshContainer(this);
