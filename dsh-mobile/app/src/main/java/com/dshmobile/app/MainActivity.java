@@ -665,8 +665,7 @@ public class MainActivity extends Activity {
             if (prefs.getRootfsUrl().contains("22.04")) {
                 prefs.setRootfsUrl(Prefs.DEFAULT_ROOTFS_URL);
             }
-            BootstrapInstaller.deleteRecursively(ProotRunner.baseDir(this));
-            prefs.setSetupDone(false);
+            BootstrapInstaller.resetToFreshContainer(this);
             runOnUiThread(() -> {
                 startActivity(new Intent(this, SetupActivity.class));
                 finish();

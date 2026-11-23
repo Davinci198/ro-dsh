@@ -203,6 +203,8 @@ public final class BootstrapInstaller {
             // 4. Container basics
             stage("Configuring the container", 72);
             writeContainerConfig(rootfs);
+            // A reset parked the previous home: put it back now that the new rootfs exists.
+            restoreContainerHome(ctx);
 
             // 4b. Build toolchain (the node-pty that dsh depends on has to be compiled here)
             File gxx = new File(rootfs, "usr/bin/g++");
@@ -393,8 +395,66 @@ public final class BootstrapInstaller {
         return "jammy";
     }
 
-    private void writeContainerConfig(File rootfs) throws IOException {
-        File etc = new File(rootfs, "etc");
+    /**
+     * Wipes the container so the next install unpacks a fresh rootfs, but parks /home/dsh in
+     * external storage first: that directory holds the dsh profile, its provider credentials and
+     * anything the user built inside the container, and a rootfs upgrade must not cost them.
+     */
+    static void resetToFreshContainer(Context ctx) {
+        preserveContainerHome(ctx);
+        deleteRecursively(ProotRunner.baseDir(ctx));
+        Prefs.of(ctx).setSetupDone(false);
+    }
+
+    /** Where a reset parks the old /home/dsh; the next install moves it back. */
+    private static File keepHomeDir(Context ctx) {
+        return new File(ctx.getExternalFilesDir(null), "keep-home");
+    }
+
+    private static void preserveContainerHome(Context ctx) {
+        File home = ProotRunner.homeDir(ctx);
+        if (!home.isDirectory()) return;
+        File keep = keepHomeDir(ctx);
+        deleteRecursively(keep);
+        //noinspection ResultOfMethodCallIgnored
+        keep.mkdirs();
+        copyTree(home, keep);
+    }
+
+    /** Moves a parked home back into the freshly unpacked rootfs. */
+    private static void restoreContainerHome(Context ctx) {
+        File keep = keepHomeDir(ctx);
+        if (!keep.isDirectory()) return;
+        File home = ProotRunner.homeDir(ctx);
+        //noinspection ResultOfMethodCallIgnored
+        home.mkdirs();
+        copyTree(keep, home);
+        deleteRecursively(keep);
+    }
+
+    private static void copyTree(File from, File to) {
+        File[] kids = from.listFiles();
+        if (kids == null) return;
+        for (File k : kids) {
+            File target = new File(to, k.getName());
+            if (k.isDirectory()) {
+                //noinspection ResultOfMethodCallIgnored
+                target.mkdirs();
+                copyTree(k, target);
+            } else {
+                try (InputStream in = new FileInputStream(k);
+                     OutputStream out = new FileOutputStream(target)) {
+                    byte[] buf = new byte[64 * 1024];
+                    int n;
+                    while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+                } catch (IOException e) {
+                    // A single unreadable file must not abort the migration.
+                }
+            }
+        }
+    }
+
+    private void writeContainerConfig(File rootfs) throws IOException {        File etc = new File(rootfs, "etc");
         //noinspection ResultOfMethodCallIgnored
         etc.mkdirs();
         File resolv = new File(etc, "resolv.conf");
