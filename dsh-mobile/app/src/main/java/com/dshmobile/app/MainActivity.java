@@ -67,7 +67,11 @@ public class MainActivity extends Activity {
         requestWindowFeature(Window.FEATURE_NO_TITLE);
 
         Prefs prefs = Prefs.of(this);
-        if (!prefs.isSetupDone()) {
+        // The setup flag alone cannot be trusted after an interrupted reset: the container may be
+        // gone while the flag still says ready. Starting the harness in that state used to end in
+        // ForegroundServiceDidNotStartInTimeException, which looks like the app crashing on open.
+        if (!prefs.isSetupDone()
+                || !new File(ProotRunner.rootfsDir(this), "bin/bash").isFile()) {
             startActivity(new Intent(this, SetupActivity.class));
             finish();
             return;

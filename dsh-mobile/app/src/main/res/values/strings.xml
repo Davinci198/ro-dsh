@@ -132,6 +132,7 @@
     <string name="svc_pty_fixed">node-pty repaired</string>
     <string name="svc_pty_failed">node-pty repair failed, continuing</string>
     <string name="svc_running">Harness running · port %1$d</string>
+    <string name="svc_stopping">Stopping the harness…</string>
     <string name="svc_gave_up">The service could not start. Open the app to see the log.</string>
     <string name="svc_exited_restarting">The service exited (%1$d), restarting…</string>
     <string name="svc_start_failed">The service failed to start: %1$s</string>
