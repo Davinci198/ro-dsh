@@ -74,6 +74,14 @@ public class MainActivity extends Activity {
         handler = new Handler(Looper.getMainLooper());
         injector = new MobileUiInjector(this);
 
+        // Automation hook: `adb shell am start -n com.dshmobile.app/.MainActivity --es screen
+        // terminal` opens the container terminal directly. The terminal activity is not
+        // exported (it runs a root shell), so this is the only way to reach it from a script
+        // without tapping the screen. Anything other than "terminal" is ignored.
+        if ("terminal".equals(getIntent().getStringExtra("screen"))) {
+            startActivity(new Intent(this, TerminalActivity.class));
+        }
+
         // WebView remote debugging: the injected CSS/JS depends on dsh's DOM class
         // names, which carry a build hash and change with every dsh upgrade (that is how
         // the drawer once got stuck open). With this on, the real DOM can be read over
