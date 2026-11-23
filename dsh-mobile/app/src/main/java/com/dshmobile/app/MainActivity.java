@@ -95,6 +95,11 @@ public class MainActivity extends Activity {
             // the first stage that is not already done.
             startActivity(new Intent(this, SetupActivity.class));
             finish();
+        } else if ("exec".equals(screen)) {
+            // Debug channel: runs one command inside the container and leaves its output in a file
+            // adb can read, which is how a broken container gets diagnosed without tapping.
+            String cmd = getIntent().getStringExtra("cmd");
+            if (cmd != null && !cmd.isEmpty()) runDebugCommand(cmd);
         }
 
         // WebView remote debugging: the injected CSS/JS depends on dsh's DOM class
@@ -667,6 +672,23 @@ public class MainActivity extends Activity {
      * would reinstall the base whose apt cannot build inside proot, so it is dropped in favour of
      * the current default; a custom mirror URL is kept as it is.
      */
+    private void runDebugCommand(String cmd) {
+        File log = new File(getExternalFilesDir(null), "exec.log");
+        new Thread(() -> {
+            try (java.io.FileWriter w = new java.io.FileWriter(log, true)) {
+                w.write("$ " + cmd + "\n");
+            } catch (java.io.IOException ignored) {
+                // the command keeps running even if the header cannot be written
+            }
+            try {
+                ProotRunner.exec(this, java.util.Arrays.asList("/bin/sh", "-c", cmd), log)
+                        .waitFor();
+            } catch (IOException | InterruptedException ignored) {
+                // the log file already shows what the container printed, if anything
+            }
+        }, "dsh-exec").start();
+    }
+
     private void resetContainer() {
         Prefs prefs = Prefs.of(this);
         HarnessService.stopService(this);
