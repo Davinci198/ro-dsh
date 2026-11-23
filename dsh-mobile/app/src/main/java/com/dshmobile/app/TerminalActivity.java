@@ -74,6 +74,7 @@ public class TerminalActivity extends Activity implements TerminalSessionClient,
         root.setBackgroundColor(0xFF0B0F17);
 
         root.addView(buildHeader());
+        root.addView(buildChips());
         root.addView(buildTerminal(), new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
         root.addView(buildStatusLine());
@@ -126,6 +127,35 @@ public class TerminalActivity extends Activity implements TerminalSessionClient,
         bar.addView(headerAction(getString(R.string.term_clear), v -> clearScreen()));
         bar.addView(headerAction(getString(R.string.term_restart), v -> restartSession()));
         return bar;
+    }
+
+    /**
+     * Quick commands above the terminal: one tap runs the command in the shell, which is what
+     * makes the screen usable on a phone without typing a whole line.
+     */
+    private View buildChips() {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setPadding(dp(10), 0, dp(10), dp(4));
+        String[] commands = {"uname -a", "ls -la", "pwd", "dsh --version"};
+        for (String command : commands) {
+            TextView chip = new TextView(this);
+            chip.setText(command);
+            chip.setTypeface(Typeface.MONOSPACE);
+            chip.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+            chip.setTextColor(0xFF9B8CFA);
+            chip.setPadding(dp(10), dp(6), dp(10), dp(6));
+            chip.setOnClickListener(v -> {
+                if (session == null) return;
+                session.write(command + "\r");
+                terminalView.onScreenUpdated();
+            });
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            lp.setMargins(dp(2), 0, dp(6), 0);
+            row.addView(chip, lp);
+        }
+        return row;
     }
 
     private TextView headerAction(String label, View.OnClickListener onClick) {
