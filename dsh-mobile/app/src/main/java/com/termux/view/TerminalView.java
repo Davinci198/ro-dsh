@@ -34,8 +34,6 @@ import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
 import android.widget.Scroller;
 
-import androidx.annotation.Nullable;
-import androidx.annotation.RequiresApi;
 
 import com.termux.terminal.KeyHandler;
 import com.termux.terminal.TerminalEmulator;
@@ -97,7 +95,6 @@ public final class TerminalView extends View {
      * {@link #autofill(AutofillValue)} so that AutoFill UI isn't shown anymore by calling
      * {@link #resetAutoFill()}.
      */
-    @RequiresApi(api = Build.VERSION_CODES.O)
     private int mAutoFillType = AUTOFILL_TYPE_NONE;
 
     /**
@@ -111,7 +108,6 @@ public final class TerminalView extends View {
      * The updated value set will automatically be restored to {@link #IMPORTANT_FOR_AUTOFILL_NO} in
      * {@link #autofill(AutofillValue)} by calling {@link #resetAutoFill()}.
      */
-    @RequiresApi(api = Build.VERSION_CODES.O)
     private int mAutoFillImportance = IMPORTANT_FOR_AUTOFILL_NO;
 
     /**
@@ -1083,7 +1079,6 @@ public final class TerminalView extends View {
     /**
      * Define functions required for AutoFill API
      */
-    @RequiresApi(api = Build.VERSION_CODES.O)
     @Override
     public void autofill(AutofillValue value) {
         if (value.isText()) {
@@ -1093,31 +1088,26 @@ public final class TerminalView extends View {
         resetAutoFill();
     }
 
-    @RequiresApi(api = Build.VERSION_CODES.O)
     @Override
     public int getAutofillType() {
         return mAutoFillType;
     }
 
-    @RequiresApi(api = Build.VERSION_CODES.O)
     @Override
     public String[] getAutofillHints() {
         return mAutoFillHints;
     }
 
-    @RequiresApi(api = Build.VERSION_CODES.O)
     @Override
     public AutofillValue getAutofillValue() {
         return AutofillValue.forText("");
     }
 
-    @RequiresApi(api = Build.VERSION_CODES.O)
     @Override
     public int getImportantForAutofill() {
         return mAutoFillImportance;
     }
 
-    @RequiresApi(api = Build.VERSION_CODES.O)
     private synchronized void resetAutoFill() {
         // Restore none type so that AutoFill UI isn't shown anymore.
         mAutoFillType = AUTOFILL_TYPE_NONE;
@@ -1408,7 +1398,6 @@ public final class TerminalView extends View {
     }
 
     /** Get the selected text stored before "MORE" button was pressed on the context menu. */
-    @Nullable
     public String getStoredSelectedText() {
         return mTextSelectionCursorController != null ? mTextSelectionCursorController.getStoredSelectedText() : null;
     }
@@ -1479,7 +1468,6 @@ public final class TerminalView extends View {
      * Define functions required for long hold toolbar.
      */
     private final Runnable mShowFloatingToolbar = new Runnable() {
-        @RequiresApi(api = Build.VERSION_CODES.M)
         @Override
         public void run() {
             if (getTextSelectionActionMode() != null) {
@@ -1488,7 +1476,6 @@ public final class TerminalView extends View {
         }
     };
 
-    @RequiresApi(api = Build.VERSION_CODES.M)
     private void showFloatingToolbar() {
         if (getTextSelectionActionMode() != null) {
             int delay = ViewConfiguration.getDoubleTapTimeout();
@@ -1496,7 +1483,6 @@ public final class TerminalView extends View {
         }
     }
 
-    @RequiresApi(api = Build.VERSION_CODES.M)
     void hideFloatingToolbar() {
         if (getTextSelectionActionMode() != null) {
             removeCallbacks(mShowFloatingToolbar);

@@ -51,7 +51,6 @@ android {
 }
 
 dependencies {
-    implementation("androidx.annotation:annotation:1.9.1")
     implementation("org.apache.commons:commons-compress:1.27.1")
     implementation("org.tukaani:xz:1.10")
 }
