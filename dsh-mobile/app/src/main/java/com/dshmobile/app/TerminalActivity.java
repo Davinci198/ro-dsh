@@ -137,7 +137,7 @@ public class TerminalActivity extends Activity implements TerminalSessionClient,
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setPadding(dp(10), 0, dp(10), dp(4));
-        String[] commands = {"uname -a", "ls -la", "pwd", "dsh --version"};
+        String[] commands = {"uname -a", "ls -la", "pwd", "dsh --version", "mtop --adb"};
         for (String command : commands) {
             TextView chip = new TextView(this);
             chip.setText(command);
@@ -242,6 +242,8 @@ public class TerminalActivity extends Activity implements TerminalSessionClient,
             return;
         }
         try {
+            // Self-healing: an existing container gets the monitor without a reinstall.
+            BootstrapInstaller.ensureMtop(this, ProotRunner.rootfsDir(this));
             List<String> argv = ProotRunner.buildCommand(this,
                     Arrays.asList("/bin/bash", "--login"));
             String[] env = hostEnv();

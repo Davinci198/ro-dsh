@@ -60,6 +60,8 @@ public final class BootstrapInstaller {
     private static final String DSH_VERSION = "0.2.2-rc.5";
     /** Falls back to the official registry when the configured mirror has no such package (blocked, or not synced). */
     private static final String FALLBACK_NPM_REGISTRY = "https://registry.npmjs.org";
+    /** Version marker of the bundled mtop script; bump it when assets/mtop.py changes. */
+    private static final String MTOP_VERSION = "2procwatch-4";
     private static final int CONNECT_TIMEOUT = 15000;
     private static final int READ_TIMEOUT = 60000;
 
@@ -203,6 +205,7 @@ public final class BootstrapInstaller {
             // 4. Container basics
             stage("Configuring the container", 72);
             writeContainerConfig(rootfs);
+            ensureMtop(ctx, rootfs);
             // A reset parked the previous home: put it back now that the new rootfs exists.
             restoreContainerHome(ctx);
 
@@ -341,6 +344,58 @@ public final class BootstrapInstaller {
      * sshd, so it is installed over the network. A failure only costs SSH, never the web service.
      * The output is appended to logFile.
      */
+    /**
+     * Installs the `mtop` process monitor from Mobile Harness: /proc/stat and friends are blocked
+     * for apps by SELinux, so htop cannot work in the container and mtop reads /proc directly.
+     * Runs on every terminal start as well as during the install, so an existing container gets it
+     * without a reset; the marker only skips the copy when the shipped script is unchanged.
+     */
+    public static void ensureMtop(Context ctx, File rootfs) {
+        File marker = new File(rootfs, ".pocket-mtop-version");
+        File target = new File(rootfs, "usr/local/bin/mtop");
+        if (target.isFile() && MTOP_VERSION.equals(readSmall(marker))) return;
+        try {
+            File bin = new File(rootfs, "usr/local/bin");
+            //noinspection ResultOfMethodCallIgnored
+            bin.mkdirs();
+            copyAsset(ctx, "mtop.py", target);
+            //noinspection ResultOfMethodCallIgnored
+            target.setExecutable(true);
+            File readme = new File(rootfs, "root/README_procwatch.md");
+            //noinspection ResultOfMethodCallIgnored
+            readme.getParentFile().mkdirs();
+            copyAsset(ctx, "README_procwatch.md", readme);
+            writeText(marker, MTOP_VERSION);
+        } catch (IOException ignored) {
+            // A missing monitor is never a reason to fail an install or a terminal session.
+        }
+    }
+
+    private static void copyAsset(Context ctx, String asset, File target) throws IOException {
+        try (InputStream in = ctx.getAssets().open(asset);
+             OutputStream out = new FileOutputStream(target)) {
+            byte[] buf = new byte[64 * 1024];
+            int n;
+            while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+        }
+    }
+
+    private static String readSmall(File f) {
+        try (InputStream in = new FileInputStream(f)) {
+            byte[] buf = new byte[64];
+            int n = in.read(buf);
+            return n <= 0 ? null : new String(buf, 0, n, StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+    private static void writeText(File f, String text) throws IOException {
+        try (OutputStream out = new FileOutputStream(f)) {
+            out.write(text.getBytes(StandardCharsets.UTF_8));
+        }
+    }
+
     public static void ensureSshServerInstalled(Context ctx, File logFile) {
         if (new File(ProotRunner.rootfsDir(ctx), "usr/sbin/sshd").isFile()) return;
         BootstrapInstaller installer = new BootstrapInstaller(ctx, new Listener() {
