@@ -69,6 +69,7 @@
     <string name="st_open_terminal">Open the container terminal</string>
     <string name="st_view_log">View the runtime log</string>
     <string name="st_view_install_log">View the install log</string>
+    <string name="debug_running">Debug: running inside the container\n%1$s\nThe output goes to exec.log.</string>
     <string name="st_reset">Reset the container (delete everything)</string>
     <string name="st_reset_message">This deletes the Ubuntu container and all of its data. It is installed again on the next start. Continue?</string>
     <string name="st_reset_confirm">Reset</string>

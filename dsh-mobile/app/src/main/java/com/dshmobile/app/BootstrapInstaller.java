@@ -220,6 +220,12 @@ public final class BootstrapInstaller {
                         // cleared), the container's apt-get becomes an orphan that keeps the dpkg
                         // lock and every retry says "Could not get lock". Clear it first.
                         killStaleAptProcesses();
+                        // Ubuntu 26.04 replaced GNU coreutils with rust-coreutils. A transaction
+                        // interrupted between the two leaves the container with no ls/cat/uname,
+                        // and from then on every apt run dies inside libc6's preinst with
+                        // "uname: not found". The binaries are put back from the package itself,
+                        // which needs no working apt.
+                        restoreCoreutilsIfMissing(rootfs);
                         runInContainer(Arrays.asList("/usr/bin/apt-get",
                                 "-o", "DPkg::Lock::Timeout=180", "update"), 74, 78);
                         checkCancelled();
@@ -374,6 +380,23 @@ public final class BootstrapInstaller {
      * Reads VERSION_CODENAME out of the unpacked base, which is what apt sources have to name.
      * Falls back to jammy so a rootfs without os-release keeps the previous behaviour.
      */
+    private void restoreCoreutilsIfMissing(File rootfs) {
+        if (new File(rootfs, "usr/bin/uname").isFile()) return;
+        log("coreutils is missing, restoring it from the package");
+        try {
+            runInContainer(Arrays.asList("/bin/sh", "-c",
+                    "cd /tmp && /usr/bin/apt-get download rust-coreutils && "
+                            + "for d in /tmp/rust-coreutils_*.deb; do /usr/bin/dpkg-deb -x \"$d\" /; done"),
+                    74, 74);
+        } catch (Exception e) {
+            log("⚠ coreutils could not be restored: " + e.getMessage());
+            return;
+        }
+        log(new File(rootfs, "usr/bin/uname").isFile()
+                ? "coreutils restored"
+                : "⚠ the coreutils package did not put uname back");
+    }
+
     /**
      * The minimal Ubuntu base ships no /usr/bin/env (26.04 has none), while every shim in
      * /opt/node starts with #!/usr/bin/env node, so npm could not run at all: the install stopped

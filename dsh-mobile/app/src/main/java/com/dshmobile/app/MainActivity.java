@@ -82,9 +82,15 @@ public class MainActivity extends Activity {
         }
         if ("exec".equals(screen)) {
             String cmd = getIntent().getStringExtra("cmd");
+            // The activity deliberately stays in front without the app UI: a backgrounded uid has
+            // no network on this device, and apt needs one. A visible note keeps it from looking
+            // like a black screen.
+            android.widget.TextView note = new android.widget.TextView(this);
+            note.setText(getString(R.string.debug_running, String.valueOf(cmd)));
+            note.setTextColor(0xFF9AA0A6);
+            note.setPadding(48, 160, 48, 48);
+            setContentView(note);
             if (cmd != null && !cmd.isEmpty()) runDebugCommand(cmd);
-            // The activity deliberately stays in front without a screen: a backgrounded uid has
-            // no network on this device, and apt needs one.
             return;
         }
 

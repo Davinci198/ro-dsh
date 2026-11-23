@@ -70,6 +70,7 @@
     <string name="st_open_terminal">Deschide terminalul containerului</string>
     <string name="st_view_log">Vezi jurnalul de rulare</string>
     <string name="st_view_install_log">Vezi jurnalul de instalare</string>
+    <string name="debug_running">Depanare: rulează în container\n%1$s\nRezultatul merge în exec.log.</string>
     <string name="st_reset">Resetează containerul (șterge tot)</string>
     <string name="st_reset_message">Se șterge containerul Ubuntu și toate datele lui. Se reinstalează la următoarea pornire. Continui?</string>
     <string name="st_reset_confirm">Resetează</string>
