@@ -83,8 +83,8 @@ public class TerminalActivity extends Activity implements TerminalSessionClient,
                 getString(R.string.term_key_home), getString(R.string.term_key_end),
                 getString(R.string.term_key_pgup)}));
         root.addView(buildKeyRow(new String[]{
-                getString(R.string.term_key_left), getString(R.string.term_key_up),
-                getString(R.string.term_key_down), getString(R.string.term_key_right),
+                getString(R.string.term_key_left), getString(R.string.term_key_prev),
+                getString(R.string.term_key_next), getString(R.string.term_key_right),
                 getString(R.string.term_key_del), getString(R.string.term_key_pgdn),
                 getString(R.string.term_key_enter)}));
         return root;
@@ -286,9 +286,9 @@ public class TerminalActivity extends Activity implements TerminalSessionClient,
             session.write("\r");
         } else if (label.equals(getString(R.string.term_key_del))) {
             session.write("\u007f");
-        } else if (label.equals(getString(R.string.term_key_up))) {
+        } else if (label.equals(getString(R.string.term_key_prev))) {
             session.write("\u001b[A");
-        } else if (label.equals(getString(R.string.term_key_down))) {
+        } else if (label.equals(getString(R.string.term_key_next))) {
             session.write("\u001b[B");
         } else if (label.equals(getString(R.string.term_key_right))) {
             session.write("\u001b[C");
