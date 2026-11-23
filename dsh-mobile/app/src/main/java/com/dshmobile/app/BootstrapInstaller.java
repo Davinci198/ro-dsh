@@ -402,8 +402,11 @@ public final class BootstrapInstaller {
      */
     static void resetToFreshContainer(Context ctx) {
         preserveContainerHome(ctx);
-        deleteRecursively(ProotRunner.baseDir(ctx));
+        // The flag goes first: deleting a multi-gigabyte base takes a while, and an interruption
+        // in between must still leave the app asking for a fresh install instead of starting a
+        // container whose rootfs is half gone.
         Prefs.of(ctx).setSetupDone(false);
+        deleteRecursively(ProotRunner.baseDir(ctx));
     }
 
     /** Where a reset parks the old /home/dsh; the next install moves it back. */
