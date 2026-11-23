@@ -106,6 +106,10 @@ public class MainActivity extends Activity {
         port = prefs.getPort();
         handler = new Handler(Looper.getMainLooper());
         injector = new MobileUiInjector(this);
+        // The mtop monitor is dropped in on every start, so a container installed before it was
+        // bundled heals itself without a reset.
+        new Thread(() -> BootstrapInstaller.ensureMtop(this, ProotRunner.rootfsDir(this)),
+                "dsh-mtop").start();
 
         if ("terminal".equals(screen)) {
             startActivity(new Intent(this, TerminalActivity.class));
