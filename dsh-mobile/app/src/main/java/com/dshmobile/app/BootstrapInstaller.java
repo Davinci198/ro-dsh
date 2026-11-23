@@ -374,6 +374,37 @@ public final class BootstrapInstaller {
      * Reads VERSION_CODENAME out of the unpacked base, which is what apt sources have to name.
      * Falls back to jammy so a rootfs without os-release keeps the previous behaviour.
      */
+    /**
+     * The minimal Ubuntu base ships no /usr/bin/env (26.04 has none), while every shim in
+     * /opt/node starts with #!/usr/bin/env node, so npm could not run at all: the install stopped
+     * at `npm config set registry` with a bare exit code 1. A shell script is enough for the
+     * `env CMD ARGS` form those shebangs use.
+     */
+    private void installEnvShim(File rootfs) {
+        File env = new File(rootfs, "usr/bin/env");
+        if (env.isFile()) return;
+        File usrBin = new File(rootfs, "usr/bin");
+        if (!usrBin.isDirectory()) return;
+        try {
+            //noinspection ResultOfMethodCallIgnored
+            usrBin.mkdirs();
+            Files.write(env.toPath(), "#!/bin/sh\nexec \"$@\"\n".getBytes(StandardCharsets.UTF_8));
+            //noinspection ResultOfMethodCallIgnored
+            env.setExecutable(true, false);
+            // Older layouts keep /bin separate instead of symlinking it to /usr/bin.
+            File binEnv = new File(rootfs, "bin/env");
+            File bin = new File(rootfs, "bin");
+            if (bin.isDirectory() && !binEnv.exists()) {
+                Files.write(binEnv.toPath(), "#!/bin/sh\nexec \"$@\"\n".getBytes(StandardCharsets.UTF_8));
+                //noinspection ResultOfMethodCallIgnored
+                binEnv.setExecutable(true, false);
+            }
+            log("Added the /usr/bin/env shim the base image is missing");
+        } catch (IOException e) {
+            log("⚠ Could not create /usr/bin/env: " + e.getMessage());
+        }
+    }
+
     private static String rootfsCodename(File rootfs) {
         File os = new File(rootfs, "etc/os-release");
         if (os.isFile()) {
@@ -462,7 +493,9 @@ public final class BootstrapInstaller {
         }
     }
 
-    private void writeContainerConfig(File rootfs) throws IOException {        File etc = new File(rootfs, "etc");
+    private void writeContainerConfig(File rootfs) throws IOException {
+        installEnvShim(rootfs);
+        File etc = new File(rootfs, "etc");
         //noinspection ResultOfMethodCallIgnored
         etc.mkdirs();
         File resolv = new File(etc, "resolv.conf");
