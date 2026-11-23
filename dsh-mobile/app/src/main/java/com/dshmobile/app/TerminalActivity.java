@@ -143,9 +143,11 @@ public class TerminalActivity extends Activity implements TerminalSessionClient,
     private View buildTerminal() {
         terminalView = new TerminalView(this, null);
         terminalView.setBackgroundColor(0xFF000000);
-        terminalView.setTypeface(Typeface.MONOSPACE);
+        // setTextSize() creates the renderer, and setTypeface() dereferences it, so the order
+        // matters: a typeface call on a fresh view would throw.
         terminalView.setTextSize(Math.round(TypedValue.applyDimension(
                 TypedValue.COMPLEX_UNIT_SP, TEXT_SIZE_SP, getResources().getDisplayMetrics())));
+        terminalView.setTypeface(Typeface.MONOSPACE);
         terminalView.setTerminalViewClient(this);
         terminalView.setFocusable(true);
         terminalView.setFocusableInTouchMode(true);
