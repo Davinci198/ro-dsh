@@ -32,7 +32,7 @@
     };
   }
 
-  // dsh bundle 用到的其它新 API（老 WebView 一调用就崩，issue #4 闪退的根源之一）
+  // Other new APIs the dsh bundle relies on (an old WebView crashes on the call — one of the causes behind issue #4)
   if (typeof Promise.withResolvers !== 'function') {
     Promise.withResolvers = function () {
       var resolve, reject;
