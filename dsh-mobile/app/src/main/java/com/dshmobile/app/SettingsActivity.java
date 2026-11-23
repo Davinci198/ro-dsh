@@ -246,8 +246,7 @@ public class SettingsActivity extends Activity {
                 .setPositiveButton(R.string.st_reset_confirm, (d, w) -> {
                     HarnessService.stopService(this);
                     new Thread(() -> {
-                        BootstrapInstaller.deleteRecursively(ProotRunner.baseDir(this));
-                        prefs.setSetupDone(false);
+                        BootstrapInstaller.resetToFreshContainer(this);
                         runOnUiThread(() -> {
                             startActivity(new Intent(this, SetupActivity.class));
                             finish();

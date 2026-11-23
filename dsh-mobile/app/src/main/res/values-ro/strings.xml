@@ -70,6 +70,7 @@
     <string name="st_open_terminal">Deschide terminalul containerului</string>
     <string name="st_view_log">Vezi jurnalul de rulare</string>
     <string name="st_view_install_log">Vezi jurnalul de instalare</string>
+    <string name="debug_running">Depanare: rulează în container\n%1$s\nRezultatul merge în exec.log.</string>
     <string name="st_reset">Resetează containerul (șterge tot)</string>
     <string name="st_reset_message">Se șterge containerul Ubuntu și toate datele lui. Se reinstalează la următoarea pornire. Continui?</string>
     <string name="st_reset_confirm">Resetează</string>
@@ -98,6 +99,17 @@
     <string name="term_key_esc">ESC</string>
     <string name="term_key_ctrl_c">CTRL+C</string>
     <string name="term_key_tab">TAB</string>
+    <string name="term_key_ctrl">CTRL</string>
+    <string name="term_key_alt">ALT</string>
+    <string name="term_key_home">HOME</string>
+    <string name="term_key_end">END</string>
+    <string name="term_key_pgup">PGUP</string>
+    <string name="term_key_pgdn">PGDN</string>
+    <string name="term_key_del">DEL</string>
+    <string name="term_key_enter">ENTER</string>
+    <string name="copy_text">Copiază</string>
+    <string name="paste_text">Lipește</string>
+    <string name="text_selection_more">Mai mult…</string>
     <string name="term_not_installed">Containerul nu este încă instalat. Termină mai întâi inițializarea.\n</string>
     <string name="term_connected">Conectat la shell-ul containerului (director de lucru /home/dsh). Dacă o comandă se blochează, apasă Repornește.\n</string>
     <string name="term_start_failed">Shell-ul nu a pornit: %1$s\n</string>
@@ -122,6 +134,7 @@
     <string name="svc_pty_fixed">node-pty reparat</string>
     <string name="svc_pty_failed">Repararea node-pty a eșuat, se continuă</string>
     <string name="svc_running">Harness rulează · port %1$d</string>
+    <string name="svc_stopping">Se oprește harness-ul…</string>
     <string name="svc_gave_up">Serviciul nu a pornit. Deschide aplicația pentru jurnal.</string>
     <string name="svc_exited_restarting">Serviciul s-a oprit (%1$d), se repornește…</string>
     <string name="svc_start_failed">Serviciul nu a pornit: %1$s</string>

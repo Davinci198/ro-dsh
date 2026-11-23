@@ -60,6 +60,11 @@ public class HarnessService extends Service {
     public int onStartCommand(Intent intent, int flags, int startId) {
         String action = intent == null ? ACTION_START : intent.getAction();
         if (ACTION_STOP.equals(action)) {
+            // A service that was started with startForegroundService has to enter the foreground
+            // before anything else, even when the first command it receives is the stop: the
+            // platform kills the process with ForegroundServiceDidNotStartInTimeException
+            // otherwise. The stop itself still happens on its own thread right after.
+            startForeground(NOTIF_ID, buildNotification(getString(R.string.svc_stopping)));
             wantRun = false;
             // Stopping has to really kill the container and every service in it (the
             // notification's Stop means "shut down"). It must never be queued on the

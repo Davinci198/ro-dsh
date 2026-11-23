@@ -17,6 +17,7 @@ import android.view.Window;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -57,6 +58,7 @@ public class MainActivity extends Activity {
     private static final long TOKEN_SCAN_BYTES = 256 * 1024;
     private boolean loadedWithToken;
     private int authRetries;
+    private int httpErrorRetries;
     private ValueCallback<Uri[]> fileCallback;
 
     @Override
@@ -65,7 +67,38 @@ public class MainActivity extends Activity {
         requestWindowFeature(Window.FEATURE_NO_TITLE);
 
         Prefs prefs = Prefs.of(this);
-        if (!prefs.isSetupDone()) {
+
+        // Automation hook: `adb shell am start -n com.dshmobile.app/.MainActivity --es screen
+        // <screen>` reaches a screen a script cannot tap into. "terminal" and "setup" open those
+        // screens. "reset" performs the container reset the settings screen offers, which is how a
+        // rootfs upgrade is run on a live install. "exec" runs one command inside the container
+        // and appends its output to exec.log in the external files directory, which is the only
+        // way to look inside a container that has lost its coreutils. The two that need no UI are
+        // handled before the setup guard, so they also work while an install is incomplete.
+        String screen = getIntent().getStringExtra("screen");
+        if ("reset".equals(screen)) {
+            resetContainer();
+            return;
+        }
+        if ("exec".equals(screen)) {
+            String cmd = getIntent().getStringExtra("cmd");
+            // The activity deliberately stays in front without the app UI: a backgrounded uid has
+            // no network on this device, and apt needs one. A visible note keeps it from looking
+            // like a black screen.
+            android.widget.TextView note = new android.widget.TextView(this);
+            note.setText(getString(R.string.debug_running, String.valueOf(cmd)));
+            note.setTextColor(0xFF9AA0A6);
+            note.setPadding(48, 160, 48, 48);
+            setContentView(note);
+            if (cmd != null && !cmd.isEmpty()) runDebugCommand(cmd);
+            return;
+        }
+
+        // The setup flag alone cannot be trusted after an interrupted reset: the container may be
+        // gone while the flag still says ready. Starting the harness in that state used to end in
+        // ForegroundServiceDidNotStartInTimeException, which looks like the app crashing on open.
+        if (!prefs.isSetupDone()
+                || !new File(ProotRunner.rootfsDir(this), "bin/bash").isFile()) {
             startActivity(new Intent(this, SetupActivity.class));
             finish();
             return;
@@ -73,6 +106,19 @@ public class MainActivity extends Activity {
         port = prefs.getPort();
         handler = new Handler(Looper.getMainLooper());
         injector = new MobileUiInjector(this);
+        // The mtop monitor is dropped in on every start, so a container installed before it was
+        // bundled heals itself without a reset.
+        new Thread(() -> BootstrapInstaller.ensureMtop(this, ProotRunner.rootfsDir(this)),
+                "dsh-mtop").start();
+
+        if ("terminal".equals(screen)) {
+            startActivity(new Intent(this, TerminalActivity.class));
+        } else if ("setup".equals(screen)) {
+            // Resumes the installer without wiping anything: an interrupted install picks up at
+            // the first stage that is not already done.
+            startActivity(new Intent(this, SetupActivity.class));
+            finish();
+        }
 
         // WebView remote debugging: the injected CSS/JS depends on dsh's DOM class
         // names, which carry a build hash and change with every dsh upgrade (that is how
@@ -256,8 +302,24 @@ public class MainActivity extends Activity {
                                 return;
                             }
                             authRetries = 0;
+                            httpErrorRetries = 0;
                             dismissSplash();
                         });
+            }
+
+            @Override
+            public void onReceivedHttpError(WebView view, WebResourceRequest request,
+                                            WebResourceResponse errorResponse) {
+                if (!request.isForMainFrame()) return;
+                int code = errorResponse == null ? 0 : errorResponse.getStatusCode();
+                // Neither of these answers a readable page: a 401 means the token in the URL
+                // died with the previous harness process, a 5xx means dsh web is up but broken.
+                // The WebView then renders net::ERR_HTTP_RESPONSE_CODE_FAILURE, which carries no
+                // text to inspect, so the status code is the only signal to act on.
+                if (code == 401 || code == 403 || code >= 500) {
+                    pageFailed = true;
+                    recoverFromHttpError(code);
+                }
             }
 
             @Override
@@ -537,6 +599,43 @@ public class MainActivity extends Activity {
         return last;
     }
 
+    /**
+     * A non-2xx answer for the main frame. The token rotates on every harness restart, so the
+     * first attempts just re-read the log tail and reload; only a server that keeps failing is
+     * restarted, and a restart is what mints a new token anyway.
+     */
+    private void recoverFromHttpError(int code) {
+        if (isFinishing()) return;
+        httpErrorRetries++;
+        loadAttempts = 0;
+        if (httpErrorRetries <= 2) {
+            showSplash(getString(R.string.token_expired));
+            handler.postDelayed(() -> {
+                if (!isFinishing()) loadMainUrl();
+            }, 1200);
+            return;
+        }
+        if (httpErrorRetries <= 4) {
+            showSplash(getString(R.string.service_retry));
+            restartHarness();
+            return;
+        }
+        httpErrorRetries = 0;
+        showSplash(getString(R.string.load_failed));
+    }
+
+    /** Stops dsh web and starts it again, which also prints a fresh access token. */
+    private void restartHarness() {
+        HarnessService.stopService(this);
+        handler.postDelayed(() -> {
+            if (isFinishing()) return;
+            HarnessService.startService(this);
+            handler.postDelayed(() -> {
+                if (!isFinishing()) loadMainUrl();
+            }, 3000);
+        }, 2000);
+    }
+
     /** Main frame failed: show the splash again and retry a bounded number of times. */
     private void scheduleReload() {
         handler.post(() -> {
@@ -584,6 +683,43 @@ public class MainActivity extends Activity {
         } finally {
             if (conn != null) conn.disconnect();
         }
+    }
+
+    /**
+     * Wipes the container and hands over to the first-run installer. A stored 26.04 rootfs URL
+     * would reinstall the base whose apt cannot build inside proot, so it is dropped in favour of
+     * the current default; a custom mirror URL is kept as it is.
+     */
+    private void runDebugCommand(String cmd) {
+        File log = new File(getExternalFilesDir(null), "exec.log");
+        new Thread(() -> {
+            try (java.io.FileWriter w = new java.io.FileWriter(log, true)) {
+                w.write("$ " + cmd + "\n");
+            } catch (java.io.IOException ignored) {
+                // the command keeps running even if the header cannot be written
+            }
+            try {
+                ProotRunner.exec(this, java.util.Arrays.asList("/bin/sh", "-c", cmd), log)
+                        .waitFor();
+            } catch (IOException | InterruptedException ignored) {
+                // the log file already shows what the container printed, if anything
+            }
+        }, "dsh-exec").start();
+    }
+
+    private void resetContainer() {
+        Prefs prefs = Prefs.of(this);
+        HarnessService.stopService(this);
+        new Thread(() -> {
+            if (prefs.getRootfsUrl().contains("26.04")) {
+                prefs.setRootfsUrl(Prefs.DEFAULT_ROOTFS_URL);
+            }
+            BootstrapInstaller.resetToFreshContainer(this);
+            runOnUiThread(() -> {
+                startActivity(new Intent(this, SetupActivity.class));
+                finish();
+            });
+        }, "dsh-reset").start();
     }
 
     @Override

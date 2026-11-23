@@ -132,23 +132,27 @@ public final class ProotRunner {
 
         cmd.add("-w");
         cmd.add("/home/dsh");
-        // Drop the host-side LD_LIBRARY_PATH (it points at proot's dependencies and means nothing inside)
-        cmd.add("/usr/bin/env");
-        cmd.add("-u");
-        cmd.add("LD_LIBRARY_PATH");
-        cmd.add("PATH=/opt/node/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin");
-        cmd.add("HOME=/home/dsh");
-        cmd.add("TERM=xterm-256color");
-        cmd.add("DEBIAN_FRONTEND=noninteractive");
-        // The dsh command sandbox is disabled: inside a phone PRoot container both bwrap
-        // (needs unprivileged user namespaces, normally disabled by the Android kernel) and
-        // Landlock (needs kernel 5.13+ with that LSM enabled) fail their probes, so commands
-        // under workspace-write are refused with SANDBOX_UNAVAILABLE. Pinning
-        // danger-full-access makes bash-sandbox run commands without consulting the runner,
-        // leaves fs-sandbox unfenced and stops approval from asking one by one; in the dsh-base
-        // composition both sandbox-policy and approval read this variable as a deployment-level
-        // override.
-        cmd.add("DSH_PERMISSION_MODE=danger-full-access");
+        // Drop the host-side LD_LIBRARY_PATH (it points at proot's dependencies and means nothing
+        // inside), then hand over to the requested command. This used to be /usr/bin/env -u, but
+        // the minimal Ubuntu base has no coreutils env (the 26.04 base has none), so the unset is
+        // done by the shell every rootfs is guaranteed to carry.
+        cmd.add("/bin/sh");
+        cmd.add("-c");
+        cmd.add("unset LD_LIBRARY_PATH; "
+                + "PATH=/opt/node/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; "
+                + "HOME=/home/dsh; TERM=xterm-256color; DEBIAN_FRONTEND=noninteractive; "
+                // The dsh command sandbox is disabled: inside a phone PRoot container both bwrap
+                // (needs unprivileged user namespaces, normally disabled by the Android kernel) and
+                // Landlock (needs kernel 5.13+ with that LSM enabled) fail their probes, so commands
+                // under workspace-write are refused with SANDBOX_UNAVAILABLE. Pinning
+                // danger-full-access makes bash-sandbox run commands without consulting the runner,
+                // leaves fs-sandbox unfenced and stops approval from asking one by one; in the dsh-base
+                // composition both sandbox-policy and approval read this variable as a deployment-level
+                // override.
+                + "DSH_PERMISSION_MODE=danger-full-access; "
+                + "export PATH HOME TERM DEBIAN_FRONTEND DSH_PERMISSION_MODE; "
+                + "exec \"$@\"");
+        cmd.add("sh");
         cmd.addAll(inner);
         return cmd;
     }

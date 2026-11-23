@@ -20,8 +20,10 @@ public final class Prefs {
 
     // Defaults are the mirrors that work well from this region: USTC hosts a rootfs, Node and
     // Termux pool. USTC has no npm mirror, so npmmirror is used for that.
+    // The same Ubuntu base Mobile Harness ships: 26.04.1 arm64. Ubuntu 22.04 is still accepted
+    // through the rootfs URL setting, and the apt sources follow whatever base was unpacked.
     public static final String DEFAULT_ROOTFS_URL =
-            "https://cdimage.ubuntu.com/ubuntu-base/releases/22.04/release/ubuntu-base-22.04.5-base-arm64.tar.gz";
+            "https://cdimage.ubuntu.com/ubuntu-base/releases/26.04.1/release/ubuntu-base-26.04-base-arm64.tar.gz";
     public static final String DEFAULT_NODE_MIRROR = "https://nodejs.org/dist";
     public static final String DEFAULT_NPM_REGISTRY = "https://registry.npmmirror.com";
     public static final int DEFAULT_PORT = 3080;

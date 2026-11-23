@@ -60,6 +60,8 @@ public final class BootstrapInstaller {
     private static final String DSH_VERSION = "0.2.2-rc.5";
     /** Falls back to the official registry when the configured mirror has no such package (blocked, or not synced). */
     private static final String FALLBACK_NPM_REGISTRY = "https://registry.npmjs.org";
+    /** Version marker of the bundled mtop script; bump it when assets/mtop.py changes. */
+    private static final String MTOP_VERSION = "2procwatch-4";
     private static final int CONNECT_TIMEOUT = 15000;
     private static final int READ_TIMEOUT = 60000;
 
@@ -203,6 +205,9 @@ public final class BootstrapInstaller {
             // 4. Container basics
             stage("Configuring the container", 72);
             writeContainerConfig(rootfs);
+            ensureMtop(ctx, rootfs);
+            // A reset parked the previous home: put it back now that the new rootfs exists.
+            restoreContainerHome(ctx);
 
             // 4b. Build toolchain (the node-pty that dsh depends on has to be compiled here)
             File gxx = new File(rootfs, "usr/bin/g++");
@@ -218,6 +223,12 @@ public final class BootstrapInstaller {
                         // cleared), the container's apt-get becomes an orphan that keeps the dpkg
                         // lock and every retry says "Could not get lock". Clear it first.
                         killStaleAptProcesses();
+                        // Ubuntu 26.04 replaced GNU coreutils with rust-coreutils. A transaction
+                        // interrupted between the two leaves the container with no ls/cat/uname,
+                        // and from then on every apt run dies inside libc6's preinst with
+                        // "uname: not found". The binaries are put back from the package itself,
+                        // which needs no working apt.
+                        restoreCoreutilsIfMissing(rootfs);
                         runInContainer(Arrays.asList("/usr/bin/apt-get",
                                 "-o", "DPkg::Lock::Timeout=180", "update"), 74, 78);
                         checkCancelled();
@@ -333,6 +344,58 @@ public final class BootstrapInstaller {
      * sshd, so it is installed over the network. A failure only costs SSH, never the web service.
      * The output is appended to logFile.
      */
+    /**
+     * Installs the `mtop` process monitor from Mobile Harness: /proc/stat and friends are blocked
+     * for apps by SELinux, so htop cannot work in the container and mtop reads /proc directly.
+     * Runs on every terminal start as well as during the install, so an existing container gets it
+     * without a reset; the marker only skips the copy when the shipped script is unchanged.
+     */
+    public static void ensureMtop(Context ctx, File rootfs) {
+        File marker = new File(rootfs, ".pocket-mtop-version");
+        File target = new File(rootfs, "usr/local/bin/mtop");
+        if (target.isFile() && MTOP_VERSION.equals(readSmall(marker))) return;
+        try {
+            File bin = new File(rootfs, "usr/local/bin");
+            //noinspection ResultOfMethodCallIgnored
+            bin.mkdirs();
+            copyAsset(ctx, "mtop.py", target);
+            //noinspection ResultOfMethodCallIgnored
+            target.setExecutable(true);
+            File readme = new File(rootfs, "root/README_procwatch.md");
+            //noinspection ResultOfMethodCallIgnored
+            readme.getParentFile().mkdirs();
+            copyAsset(ctx, "README_procwatch.md", readme);
+            writeText(marker, MTOP_VERSION);
+        } catch (IOException ignored) {
+            // A missing monitor is never a reason to fail an install or a terminal session.
+        }
+    }
+
+    private static void copyAsset(Context ctx, String asset, File target) throws IOException {
+        try (InputStream in = ctx.getAssets().open(asset);
+             OutputStream out = new FileOutputStream(target)) {
+            byte[] buf = new byte[64 * 1024];
+            int n;
+            while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+        }
+    }
+
+    private static String readSmall(File f) {
+        try (InputStream in = new FileInputStream(f)) {
+            byte[] buf = new byte[64];
+            int n = in.read(buf);
+            return n <= 0 ? null : new String(buf, 0, n, StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+    private static void writeText(File f, String text) throws IOException {
+        try (OutputStream out = new FileOutputStream(f)) {
+            out.write(text.getBytes(StandardCharsets.UTF_8));
+        }
+    }
+
     public static void ensureSshServerInstalled(Context ctx, File logFile) {
         if (new File(ProotRunner.rootfsDir(ctx), "usr/sbin/sshd").isFile()) return;
         BootstrapInstaller installer = new BootstrapInstaller(ctx, new Listener() {
@@ -368,7 +431,148 @@ public final class BootstrapInstaller {
         }
     }
 
+    /**
+     * Reads VERSION_CODENAME out of the unpacked base, which is what apt sources have to name.
+     * Falls back to jammy so a rootfs without os-release keeps the previous behaviour.
+     */
+    private void restoreCoreutilsIfMissing(File rootfs) {
+        if (new File(rootfs, "usr/bin/uname").isFile()) return;
+        log("coreutils is missing, restoring it from the package");
+        try {
+            runInContainer(Arrays.asList("/bin/sh", "-c",
+                    "cd /tmp && /usr/bin/apt-get download rust-coreutils && "
+                            + "for d in /tmp/rust-coreutils_*.deb; do /usr/bin/dpkg-deb -x \"$d\" /; done"),
+                    74, 74);
+        } catch (Exception e) {
+            log("⚠ coreutils could not be restored: " + e.getMessage());
+            return;
+        }
+        log(new File(rootfs, "usr/bin/uname").isFile()
+                ? "coreutils restored"
+                : "⚠ the coreutils package did not put uname back");
+    }
+
+    /**
+     * The minimal Ubuntu base ships no /usr/bin/env (26.04 has none), while every shim in
+     * /opt/node starts with #!/usr/bin/env node, so npm could not run at all: the install stopped
+     * at `npm config set registry` with a bare exit code 1. A shell script is enough for the
+     * `env CMD ARGS` form those shebangs use.
+     */
+    private void installEnvShim(File rootfs) {
+        File env = new File(rootfs, "usr/bin/env");
+        if (env.isFile()) return;
+        File usrBin = new File(rootfs, "usr/bin");
+        if (!usrBin.isDirectory()) return;
+        try {
+            //noinspection ResultOfMethodCallIgnored
+            usrBin.mkdirs();
+            Files.write(env.toPath(), "#!/bin/sh\nexec \"$@\"\n".getBytes(StandardCharsets.UTF_8));
+            //noinspection ResultOfMethodCallIgnored
+            env.setExecutable(true, false);
+            // Older layouts keep /bin separate instead of symlinking it to /usr/bin.
+            File binEnv = new File(rootfs, "bin/env");
+            File bin = new File(rootfs, "bin");
+            if (bin.isDirectory() && !binEnv.exists()) {
+                Files.write(binEnv.toPath(), "#!/bin/sh\nexec \"$@\"\n".getBytes(StandardCharsets.UTF_8));
+                //noinspection ResultOfMethodCallIgnored
+                binEnv.setExecutable(true, false);
+            }
+            log("Added the /usr/bin/env shim the base image is missing");
+        } catch (IOException e) {
+            log("⚠ Could not create /usr/bin/env: " + e.getMessage());
+        }
+    }
+
+    private static String rootfsCodename(File rootfs) {
+        File os = new File(rootfs, "etc/os-release");
+        if (os.isFile()) {
+            try (java.io.BufferedReader r = new java.io.BufferedReader(
+                    new java.io.FileReader(os))) {
+                String line;
+                while ((line = r.readLine()) != null) {
+                    line = line.trim();
+                    if (line.startsWith("VERSION_CODENAME=")) {
+                        String v = line.substring("VERSION_CODENAME=".length())
+                                .replace("\"", "").trim();
+                        if (!v.isEmpty()) return v;
+                    }
+                }
+            } catch (IOException ignored) {
+                // Falls through to the default below.
+            }
+        }
+        return "jammy";
+    }
+
+    /**
+     * Wipes the container so the next install unpacks a fresh rootfs, but parks /home/dsh in
+     * external storage first: that directory holds the dsh profile, its provider credentials and
+     * anything the user built inside the container, and a rootfs upgrade must not cost them.
+     */
+    static void resetToFreshContainer(Context ctx) {
+        preserveContainerHome(ctx);
+        // The flag goes first: deleting a multi-gigabyte base takes a while, and an interruption
+        // in between must still leave the app asking for a fresh install instead of starting a
+        // container whose rootfs is half gone.
+        Prefs.of(ctx).setSetupDone(false);
+        deleteRecursively(ProotRunner.baseDir(ctx));
+    }
+
+    /** Where a reset parks the old /home/dsh; the next install moves it back. */
+    private static File keepHomeDir(Context ctx) {
+        return new File(ctx.getExternalFilesDir(null), "keep-home");
+    }
+
+    private static void preserveContainerHome(Context ctx) {
+        File home = ProotRunner.homeDir(ctx);
+        if (!home.isDirectory()) return;
+        File keep = keepHomeDir(ctx);
+        File[] parked = keep.listFiles();
+        // A second reset before the install has put the parked home back must not overwrite it:
+        // the live home is then the half-installed container's, and the real profile only exists
+        // in the parked copy.
+        if (parked != null && parked.length > 0) return;
+        deleteRecursively(keep);
+        //noinspection ResultOfMethodCallIgnored
+        keep.mkdirs();
+        copyTree(home, keep);
+    }
+
+    /** Moves a parked home back into the freshly unpacked rootfs. */
+    private static void restoreContainerHome(Context ctx) {
+        File keep = keepHomeDir(ctx);
+        if (!keep.isDirectory()) return;
+        File home = ProotRunner.homeDir(ctx);
+        //noinspection ResultOfMethodCallIgnored
+        home.mkdirs();
+        copyTree(keep, home);
+        deleteRecursively(keep);
+    }
+
+    private static void copyTree(File from, File to) {
+        File[] kids = from.listFiles();
+        if (kids == null) return;
+        for (File k : kids) {
+            File target = new File(to, k.getName());
+            if (k.isDirectory()) {
+                //noinspection ResultOfMethodCallIgnored
+                target.mkdirs();
+                copyTree(k, target);
+            } else {
+                try (InputStream in = new FileInputStream(k);
+                     OutputStream out = new FileOutputStream(target)) {
+                    byte[] buf = new byte[64 * 1024];
+                    int n;
+                    while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+                } catch (IOException e) {
+                    // A single unreadable file must not abort the migration.
+                }
+            }
+        }
+    }
+
     private void writeContainerConfig(File rootfs) throws IOException {
+        installEnvShim(rootfs);
         File etc = new File(rootfs, "etc");
         //noinspection ResultOfMethodCallIgnored
         etc.mkdirs();
@@ -385,11 +589,15 @@ public final class BootstrapInstaller {
         // comes from InRelease signature checks, and http is the documented way to use an Ubuntu
         // mirror.
         File sources = new File(etc, "apt");
+        // The suite name follows the unpacked base (jammy for 22.04, resolute for 26.04), so a
+        // different rootfs URL does not leave apt pointing at a release that was not installed.
+        String codename = rootfsCodename(rootfs);
+        log("apt suite: " + codename);
         //noinspection ResultOfMethodCallIgnored
         sources.mkdirs();
-        String list = "deb http://ports.ubuntu.com jammy main restricted universe multiverse\n"
-                + "deb http://ports.ubuntu.com jammy-updates main restricted universe multiverse\n"
-                + "deb http://ports.ubuntu.com jammy-security main restricted universe multiverse\n";
+        String list = "deb http://ports.ubuntu.com " + codename + " main restricted universe multiverse\n"
+                + "deb http://ports.ubuntu.com " + codename + "-updates main restricted universe multiverse\n"
+                + "deb http://ports.ubuntu.com " + codename + "-security main restricted universe multiverse\n";
         Files.write(new File(sources, "sources.list").toPath(), list.getBytes(StandardCharsets.UTF_8));
         //noinspection ResultOfMethodCallIgnored
         new File(rootfs, "mnt/sd").mkdirs();

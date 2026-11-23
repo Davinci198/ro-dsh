@@ -1,565 +1,533 @@
 package com.dshmobile.app;
 
 import android.app.Activity;
-import android.graphics.Color;
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Context;
 import android.graphics.Typeface;
-import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.text.SpannableString;
-import android.text.Spanned;
-import android.text.style.StyleSpan;
-import android.text.style.ForegroundColorSpan;
+import android.text.TextUtils;
+import android.util.TypedValue;
 import android.view.Gravity;
+import android.view.KeyEvent;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
-import android.view.inputmethod.EditorInfo;
-import android.widget.EditText;
-import android.widget.HorizontalScrollView;
+import android.view.WindowManager;
+import android.view.inputmethod.InputMethodManager;
+import android.widget.Button;
 import android.widget.LinearLayout;
-import android.widget.ScrollView;
 import android.widget.TextView;
+import android.widget.Toast;
 
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.OutputStream;
-import java.nio.charset.StandardCharsets;
+import com.termux.terminal.TerminalSession;
+import com.termux.terminal.TerminalSessionClient;
+import com.termux.view.TerminalView;
+import com.termux.view.TerminalViewClient;
+
+import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 
 /**
- * Container terminal, styled and behaving like the Mobile Harness terminal.
+ * The container terminal, rendered the way Termux renders it: a real pseudo-terminal and a VT
+ * emulator view (com.termux.*), not a captured stdout pipe. Everything a shell needs works —
+ * colours, cursor, readline line editing, job control, scrollback, Ctrl+C as a real signal,
+ * window size changes — because the shell really owns a tty.
  *
- * One persistent bash lives inside the PRoot container and commands are written to
- * its stdin, so `cd`, exported variables and background jobs survive between
- * commands. Every command gets its own block: a green {@code root@pocket:~#} prompt
- * line, then the output, in the error colour when the command exited non-zero.
- *
- * The exit code is not guessed: the command is followed by a printf marker and the
- * terminal reads it back out of the stream, which is what makes "error colour for a
- * failing command" and "the next block starts on a clean line" possible on a pipe.
+ * <p>The pty child is proot itself: JNI.createSubprocess() runs the PRoot binary in a pty and
+ * PRoot starts /bin/bash inside the Ubuntu rootfs, so bash sees a tty of the right size.
  */
-public class TerminalActivity extends Activity {
+public class TerminalActivity extends Activity implements TerminalSessionClient, TerminalViewClient {
 
-    private static final int BG = Color.parseColor("#0B0F17");
-    private static final int CONSOLE = Color.parseColor("#090D14");
-    private static final int TEXT = Color.parseColor("#F0F6FC");
-    private static final int OUTPUT = Color.parseColor("#C9D1D9");
-    private static final int DIM = Color.parseColor("#6E7681");
-    private static final int ACCENT = Color.parseColor("#22C55E");
-    private static final int PROMPT = Color.parseColor("#4ADE80");
-    private static final int ERROR = Color.parseColor("#F87171");
-    private static final int OUTLINE = Color.parseColor("#30363D");
-    private static final int CHIP_BG = Color.parseColor("#131A24");
+    private static final String TAG = "DshTerminal";
+    /** Terminal font size in sp; TerminalView.setTextSize() wants pixels, so it is converted. */
+    private static final float TEXT_SIZE_SP = 12f;
+    private static final int TRANSCRIPT_ROWS = 5000;
 
-    /** Marker printed after every command so the terminal knows where output ends. */
-    private static final String RC_MARKER = "\u0001DSH_RC=";
-
-    /** First byte of the marker; StringBuilder has no lastIndexOf(char). */
-    private static final String MARKER_HEAD = RC_MARKER.substring(0, 1);
-
-    /** Output kept per block and in total: a runaway command must not eat the heap. */
-    private static final int MAX_BLOCK = 60_000;
-    private static final int MAX_TOTAL = 200_000;
-
-    private static final List<String> QUICK_COMMANDS = Arrays.asList(
-            "uname -a", "ls -la", "pwd", "node -v", "df -h", "free -m", "dsh --version");
-
-    private final Handler handler = new Handler(Looper.getMainLooper());
-    private final List<String> history = new ArrayList<>();
-    private int historyIndex = -1;
-
-    private ScrollView consoleScroll;
-    private LinearLayout consoleColumn;
-    private LinearLayout currentBlock;
-    private TextView currentOutput;
-    private final StringBuilder currentText = new StringBuilder();
-    private int blocks;
-
-    private EditText input;
-    private TextView promptPrefix;
-
-    private Process shell;
-    private OutputStream stdin;
-    private boolean reading;
+    private TerminalView terminalView;
+    private TerminalSession session;
+    private TextView statusLine;
+    private Button ctrlKey;
+    private Button altKey;
+    private boolean ctrlPressed;
+    private boolean altPressed;
+    private final Handler main = new Handler(Looper.getMainLooper());
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         setContentView(buildUi());
-        startShell();
+        startSession();
     }
 
-    // ── UI ──────────────────────────────────────────────────────────────────
+    // ---------------------------------------------------------------- UI
 
     private View buildUi() {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(BG);
-        root.setFitsSystemWindows(true);
+        root.setBackgroundColor(0xFF0B0F17);
 
-        root.addView(header(), new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        root.addView(divider());
-        root.addView(quickCommands(), new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        root.addView(divider());
-
-        consoleScroll = new ScrollView(this);
-        consoleScroll.setFillViewport(true);
-        consoleColumn = new LinearLayout(this);
-        consoleColumn.setOrientation(LinearLayout.VERTICAL);
-        int p = Ui.dp(this, 14);
-        consoleColumn.setPadding(p, p, p, p);
-        consoleScroll.addView(consoleColumn, new ScrollView.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-
-        LinearLayout consoleCard = new LinearLayout(this);
-        consoleCard.setOrientation(LinearLayout.VERTICAL);
-        consoleCard.setBackground(rounded(CONSOLE, 12, OUTLINE, 1));
-        consoleCard.addView(consoleScroll);
-        LinearLayout.LayoutParams cardParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1);
-
-        LinearLayout body = new LinearLayout(this);
-        body.setOrientation(LinearLayout.VERTICAL);
-        int m = Ui.dp(this, 14);
-        body.setPadding(m, Ui.dp(this, 8), m, Ui.dp(this, 8));
-        body.addView(consoleCard, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
-        root.addView(body, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
-
-        root.addView(inputRow());
-        root.addView(keyRow());
+        root.addView(buildHeader());
+        root.addView(buildChips());
+        root.addView(buildTerminal(), new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        root.addView(buildStatusLine());
+        root.addView(buildKeyRow(new String[]{
+                getString(R.string.term_key_esc), getString(R.string.term_key_ctrl),
+                getString(R.string.term_key_alt), getString(R.string.term_key_tab),
+                getString(R.string.term_key_home), getString(R.string.term_key_end),
+                getString(R.string.term_key_pgup)}));
+        root.addView(buildKeyRow(new String[]{
+                getString(R.string.term_key_left), getString(R.string.term_key_prev),
+                getString(R.string.term_key_next), getString(R.string.term_key_right),
+                getString(R.string.term_key_del), getString(R.string.term_key_pgdn),
+                getString(R.string.term_key_enter)}));
         return root;
     }
 
-    private View header() {
+    private View buildHeader() {
         LinearLayout bar = new LinearLayout(this);
         bar.setOrientation(LinearLayout.HORIZONTAL);
         bar.setGravity(Gravity.CENTER_VERTICAL);
-        int pad = Ui.dp(this, 16);
-        bar.setPadding(pad, Ui.dp(this, 10), Ui.dp(this, 8), Ui.dp(this, 10));
+        bar.setBackgroundColor(0xFF0B0F17);
+        int pad = dp(10);
+        bar.setPadding(pad, pad, pad, dp(6));
 
-        TextView icon = new TextView(this);
-        icon.setText(">_");
-        icon.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
-        icon.setTextSize(13);
-        icon.setTextColor(ACCENT);
-        icon.setGravity(Gravity.CENTER);
-        icon.setBackground(rounded(withAlpha(ACCENT, 0.12f), 10, 0, 0));
-        bar.addView(icon, new LinearLayout.LayoutParams(Ui.dp(this, 34), Ui.dp(this, 34)));
+        TextView back = new TextView(this);
+        back.setText("‹");
+        back.setTextColor(0xFFC9D1D9);
+        back.setTextSize(TypedValue.COMPLEX_UNIT_SP, 24);
+        back.setGravity(Gravity.CENTER);
+        back.setPadding(dp(8), 0, dp(12), 0);
+        back.setOnClickListener(v -> finish());
+        bar.addView(back);
 
         LinearLayout titles = new LinearLayout(this);
         titles.setOrientation(LinearLayout.VERTICAL);
-        LinearLayout.LayoutParams titlesParams = new LinearLayout.LayoutParams(
-                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
-        titlesParams.leftMargin = Ui.dp(this, 11);
         TextView title = new TextView(this);
-        title.setText(getString(R.string.term_title));
-        title.setTextColor(TEXT);
-        title.setTextSize(15);
-        title.setTypeface(Typeface.DEFAULT_BOLD);
+        title.setText(R.string.term_title);
+        title.setTextColor(0xFFF0F6FC);
+        title.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
+        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
         TextView subtitle = new TextView(this);
-        subtitle.setText(getString(R.string.term_subtitle));
-        subtitle.setTextColor(DIM);
-        subtitle.setTextSize(10.5f);
+        subtitle.setText(R.string.term_subtitle);
+        subtitle.setTextColor(0xFF6E7681);
+        subtitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
         titles.addView(title);
         titles.addView(subtitle);
-        bar.addView(titles, titlesParams);
+        bar.addView(titles, new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
-        bar.addView(headerAction(getString(R.string.term_clear), v -> clearConsole()));
-        bar.addView(headerAction(getString(R.string.term_restart), v -> startShell()));
+        bar.addView(headerAction(getString(R.string.term_clear), v -> clearScreen()));
+        bar.addView(headerAction(getString(R.string.term_restart), v -> restartSession()));
         return bar;
     }
 
-    private TextView headerAction(String text, View.OnClickListener click) {
-        TextView tv = new TextView(this);
-        tv.setText(text);
-        tv.setTextColor(ACCENT);
-        tv.setTextSize(12);
-        tv.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
-        tv.setPadding(Ui.dp(this, 10), Ui.dp(this, 6), Ui.dp(this, 10), Ui.dp(this, 6));
-        tv.setOnClickListener(click);
-        return tv;
-    }
-
-    private View quickCommands() {
-        HorizontalScrollView scroller = new HorizontalScrollView(this);
-        scroller.setHorizontalScrollBarEnabled(false);
+    /**
+     * Quick commands above the terminal: one tap runs the command in the shell, which is what
+     * makes the screen usable on a phone without typing a whole line.
+     */
+    private View buildChips() {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
-        int pad = Ui.dp(this, 14);
-        row.setPadding(pad, Ui.dp(this, 6), pad, Ui.dp(this, 6));
-        for (String cmd : QUICK_COMMANDS) {
+        row.setPadding(dp(10), 0, dp(10), dp(4));
+        String[] commands = {"uname -a", "ls -la", "pwd", "dsh --version", "mtop --adb"};
+        for (String command : commands) {
             TextView chip = new TextView(this);
-            chip.setText(cmd);
+            chip.setText(command);
             chip.setTypeface(Typeface.MONOSPACE);
-            chip.setTextSize(11);
-            chip.setTextColor(TEXT);
-            chip.setBackground(rounded(CHIP_BG, 999, OUTLINE, 1));
-            chip.setPadding(Ui.dp(this, 10), Ui.dp(this, 6), Ui.dp(this, 10), Ui.dp(this, 6));
-            chip.setOnClickListener(v -> runFromChip(cmd));
+            chip.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+            chip.setTextColor(0xFF9B8CFA);
+            chip.setPadding(dp(10), dp(6), dp(10), dp(6));
+            chip.setOnClickListener(v -> {
+                if (session == null) return;
+                session.write(command + "\r");
+                terminalView.onScreenUpdated();
+            });
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            lp.rightMargin = Ui.dp(this, 8);
+            lp.setMargins(dp(2), 0, dp(6), 0);
             row.addView(chip, lp);
         }
-        scroller.addView(row);
-        return scroller;
-    }
-
-    private View inputRow() {
-        LinearLayout row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setBackgroundColor(CONSOLE);
-        int pad = Ui.dp(this, 12);
-        row.setPadding(pad, Ui.dp(this, 6), pad, Ui.dp(this, 6));
-
-        promptPrefix = new TextView(this);
-        promptPrefix.setText(promptText());
-        promptPrefix.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
-        promptPrefix.setTextSize(12);
-        promptPrefix.setTextColor(PROMPT);
-        row.addView(promptPrefix);
-
-        input = new EditText(this);
-        input.setTextColor(TEXT);
-        input.setHintTextColor(DIM);
-        input.setHint(getString(R.string.term_hint));
-        input.setTextSize(12);
-        input.setTypeface(Typeface.MONOSPACE);
-        input.setSingleLine(true);
-        input.setBackground(null);
-        input.setImeOptions(EditorInfo.IME_ACTION_SEND);
-        input.setOnEditorActionListener((v, actionId, ev) -> {
-            submit();
-            return true;
-        });
-        row.addView(input, new LinearLayout.LayoutParams(
-                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
         return row;
     }
 
-    private View keyRow() {
-        HorizontalScrollView scroller = new HorizontalScrollView(this);
-        scroller.setHorizontalScrollBarEnabled(false);
+    private TextView headerAction(String label, View.OnClickListener onClick) {
+        TextView action = new TextView(this);
+        action.setText(label);
+        action.setTextColor(0xFF22C55E);
+        action.setTypeface(Typeface.MONOSPACE);
+        action.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        action.setGravity(Gravity.CENTER);
+        action.setPadding(dp(10), dp(6), dp(6), dp(6));
+        action.setOnClickListener(onClick);
+        return action;
+    }
+
+    private View buildTerminal() {
+        terminalView = new TerminalView(this, null);
+        terminalView.setBackgroundColor(0xFF000000);
+        // setTextSize() creates the renderer, and setTypeface() dereferences it, so the order
+        // matters: a typeface call on a fresh view would throw.
+        terminalView.setTextSize(Math.round(TypedValue.applyDimension(
+                TypedValue.COMPLEX_UNIT_SP, TEXT_SIZE_SP, getResources().getDisplayMetrics())));
+        terminalView.setTypeface(Typeface.MONOSPACE);
+        terminalView.setTerminalViewClient(this);
+        terminalView.setFocusable(true);
+        terminalView.setFocusableInTouchMode(true);
+        return terminalView;
+    }
+
+    private View buildStatusLine() {
+        statusLine = new TextView(this);
+        statusLine.setTextColor(0xFF6E7681);
+        statusLine.setTypeface(Typeface.MONOSPACE);
+        statusLine.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
+        statusLine.setPadding(dp(12), dp(2), dp(12), dp(2));
+        statusLine.setVisibility(View.GONE);
+        return statusLine;
+    }
+
+    private View buildKeyRow(String[] labels) {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
-        int pad = Ui.dp(this, 14);
-        row.setPadding(pad, 0, pad, Ui.dp(this, 10));
-
-        row.addView(key(getString(R.string.term_key_prev), v -> recallHistory(-1)));
-        row.addView(key(getString(R.string.term_key_next), v -> recallHistory(1)));
-        row.addView(key(getString(R.string.term_key_left), v -> moveCursor(-1)));
-        row.addView(key(getString(R.string.term_key_right), v -> moveCursor(1)));
-        row.addView(key(getString(R.string.term_key_esc), v -> input.setText("")));
-        row.addView(key(getString(R.string.term_key_ctrl_c), v -> sendRaw("\u0003")));
-        row.addView(key(getString(R.string.term_key_tab), v -> input.getText().insert(
-                Math.min(input.getSelectionStart(), input.getText().length()), "\t")));
-        scroller.addView(row);
-        return scroller;
-    }
-
-    private TextView key(String label, View.OnClickListener click) {
-        TextView tv = new TextView(this);
-        tv.setText(label);
-        tv.setTypeface(Typeface.MONOSPACE);
-        tv.setTextSize(12);
-        tv.setTextColor(TEXT);
-        tv.setGravity(Gravity.CENTER);
-        tv.setBackground(rounded(Color.TRANSPARENT, 8, OUTLINE, 1));
-        tv.setPadding(Ui.dp(this, 10), 0, Ui.dp(this, 10), 0);
-        tv.setOnClickListener(click);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, Ui.dp(this, 34));
-        lp.rightMargin = Ui.dp(this, 6);
-        tv.setLayoutParams(lp);
-        return tv;
-    }
-
-    private View divider() {
-        View v = new View(this);
-        v.setBackgroundColor(OUTLINE);
-        v.setLayoutParams(new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, Ui.dp(this, 0.5f))));
-        return v;
-    }
-
-    private GradientDrawable rounded(int fill, int radiusDp, int strokeColor, int strokeDp) {
-        GradientDrawable d = new GradientDrawable();
-        d.setColor(fill);
-        d.setCornerRadius(radiusDp == 999 ? 999 : Ui.dp(this, radiusDp));
-        if (strokeDp > 0) d.setStroke(Math.max(1, Ui.dp(this, strokeDp)), strokeColor);
-        return d;
-    }
-
-    private static int withAlpha(int color, float alpha) {
-        return Color.argb((int) (alpha * 255), Color.red(color), Color.green(color), Color.blue(color));
-    }
-
-    // ── console blocks ──────────────────────────────────────────────────────
-
-    private void addBlock(String command) {
-        if (blocks == 0) consoleColumn.removeAllViews();
-        blocks++;
-
-        currentBlock = new LinearLayout(this);
-        currentBlock.setOrientation(LinearLayout.VERTICAL);
-        LinearLayout.LayoutParams blockParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        blockParams.bottomMargin = Ui.dp(this, 8);
-        currentBlock.setLayoutParams(blockParams);
-
-        TextView prompt = new TextView(this);
-        prompt.setText(promptLine(command));
-        prompt.setTypeface(Typeface.MONOSPACE);
-        prompt.setTextSize(12);
-        prompt.setLineSpacing(Ui.dp(this, 4), 1f);
-        prompt.setTextIsSelectable(true);
-        currentBlock.addView(prompt);
-
-        currentOutput = new TextView(this);
-        currentOutput.setTextColor(OUTPUT);
-        currentOutput.setTypeface(Typeface.MONOSPACE);
-        currentOutput.setTextSize(12);
-        currentOutput.setLineSpacing(Ui.dp(this, 4), 1f);
-        currentOutput.setTextIsSelectable(true);
-        currentOutput.setVisibility(View.GONE);
-        int left = Ui.dp(this, 8);
-        currentOutput.setPadding(left, Ui.dp(this, 2), 0, 0);
-        currentBlock.addView(currentOutput);
-
-        consoleColumn.addView(currentBlock);
-        currentText.setLength(0);
-        afterConsoleChange();
-    }
-
-    private CharSequence promptLine(String command) {
-        String prefix = promptText();
-        SpannableString s = new SpannableString(prefix + command);
-        s.setSpan(new ForegroundColorSpan(PROMPT), 0, prefix.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-        s.setSpan(new StyleSpan(Typeface.BOLD), 0, prefix.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-        s.setSpan(new ForegroundColorSpan(TEXT), prefix.length(), s.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-        s.setSpan(new StyleSpan(Typeface.BOLD), prefix.length(), s.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-        return s;
-    }
-
-    private String promptText() {
-        return getString(R.string.term_prompt);
-    }
-
-    /** Appends raw terminal output to the block that is currently running. */
-    private void appendOutput(String text) {
-        if (currentOutput == null) {
-            // Output with no command of its own (a shell notice): give it a block.
-            addBlock("");
+        row.setBackgroundColor(0xFF0B0F17);
+        row.setPadding(dp(4), dp(2), dp(4), dp(2));
+        for (String label : labels) {
+            Button key = extraKey(label);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0,
+                    dp(38), 1f);
+            lp.setMargins(dp(2), dp(2), dp(2), dp(2));
+            row.addView(key, lp);
         }
-        currentText.append(text);
-        if (currentText.length() > MAX_BLOCK) {
-            currentText.delete(0, currentText.length() - MAX_BLOCK);
-        }
-        trimTotal();
-        currentOutput.setText(currentText.toString());
-        if (currentText.length() > 0) currentOutput.setVisibility(View.VISIBLE);
-        afterConsoleChange();
+        return row;
     }
 
-    private void trimTotal() {
-        while (consoleColumn.getChildCount() > 12) {
-            consoleColumn.removeViewAt(0);
-        }
+    private Button extraKey(String label) {
+        Button key = new Button(this);
+        key.setText(label);
+        key.setAllCaps(false);
+        key.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        key.setTypeface(Typeface.MONOSPACE);
+        key.setTextColor(0xFFC9D1D9);
+        key.setBackgroundColor(0xFF131A24);
+        key.setPadding(0, 0, 0, 0);
+        key.setMinWidth(0);
+        key.setMinimumWidth(0);
+        key.setMinHeight(0);
+        key.setMinimumHeight(0);
+        key.setStateListAnimator(null);
+        key.setOnClickListener(v -> onExtraKey(label));
+        if (label.equals(getString(R.string.term_key_ctrl))) ctrlKey = key;
+        if (label.equals(getString(R.string.term_key_alt))) altKey = key;
+        return key;
     }
 
-    private void afterConsoleChange() {
-        consoleScroll.post(() -> consoleScroll.fullScroll(View.FOCUS_DOWN));
+    private int dp(int value) {
+        return Math.round(TypedValue.applyDimension(
+                TypedValue.COMPLEX_UNIT_DIP, value, getResources().getDisplayMetrics()));
     }
 
-    private void markExit(int code) {
-        if (currentOutput == null) return;
-        String text = currentText.toString();
-        if (text.isEmpty()) currentOutput.setVisibility(View.GONE);
-        currentOutput.setTextColor(code == 0 ? OUTPUT : ERROR);
-        currentOutput = null;
-        currentBlock = null;
-        currentText.setLength(0);
-        afterConsoleChange();
-    }
+    // ----------------------------------------------------------- session
 
-    private void clearConsole() {
-        consoleColumn.removeAllViews();
-        blocks = 0;
-        currentOutput = null;
-        currentBlock = null;
-        currentText.setLength(0);
-        startShell();
-    }
-
-    // ── shell ───────────────────────────────────────────────────────────────
-
-    private void startShell() {
-        stopShell();
-        if (!ProotRunner.prootBin(this).isFile() || !ProotRunner.rootfsDir(this).isDirectory()) {
-            addBlock("");
-            appendOutput(getString(R.string.term_not_installed));
-            markExit(1);
+    private void startSession() {
+        if (!new File(ProotRunner.rootfsDir(this), "bin/bash").isFile()) {
+            toast(getString(R.string.term_not_installed));
             return;
         }
         try {
-            shell = ProotRunner.execPiped(this, Arrays.asList("/bin/bash", "--noprofile", "--norc"));
-            stdin = shell.getOutputStream();
-            Process p = shell;
-            reading = true;
-            new Thread(() -> readLoop(p), "dsh-term-read").start();
-            addBlock("");
-            appendOutput(getString(R.string.term_connected));
-            markExit(0);
-        } catch (IOException e) {
-            addBlock("");
-            appendOutput(getString(R.string.term_start_failed, String.valueOf(e.getMessage())));
-            markExit(1);
+            // Self-healing: an existing container gets the monitor without a reinstall.
+            BootstrapInstaller.ensureMtop(this, ProotRunner.rootfsDir(this));
+            List<String> argv = ProotRunner.buildCommand(this,
+                    Arrays.asList("/bin/bash", "--login"));
+            String[] env = hostEnv();
+            session = new TerminalSession(argv.get(0), ProotRunner.homeDir(this).getAbsolutePath(),
+                    argv.toArray(new String[0]), env, TRANSCRIPT_ROWS, this);
+            terminalView.attachSession(session);
+            terminalView.requestFocus();
+            showKeyboard();
+        } catch (Exception e) {
+            toast(getString(R.string.term_start_failed, String.valueOf(e.getMessage())));
         }
     }
 
-    private void stopShell() {
-        reading = false;
-        if (shell != null) {
-            // The proot is started with --kill-on-exit, so destroying it takes the
-            // whole container process tree with it.
-            shell.destroy();
-            shell = null;
+    /**
+     * The pty child is exec'd with exactly this environment, so the host-side variables ProotRunner
+     * needs (its loader, its tmp dir, its shared libraries) are carried over explicitly.
+     */
+    private String[] hostEnv() {
+        List<String> env = new ArrayList<>();
+        for (Map.Entry<String, String> e : System.getenv().entrySet()) {
+            env.add(e.getKey() + "=" + e.getValue());
         }
-        stdin = null;
+        env.add("PROOT_TMP_DIR=" + ProotRunner.tmpDir(this).getAbsolutePath());
+        File libs = ProotRunner.libDir(this);
+        if (libs.isDirectory()) env.add("LD_LIBRARY_PATH=" + libs.getAbsolutePath());
+        File loader = new File(ProotRunner.baseDir(this), "loader");
+        if (loader.isFile()) env.add("PROOT_LOADER=" + loader.getAbsolutePath());
+        return env.toArray(new String[0]);
     }
 
-    private void readLoop(Process p) {
-        StringBuilder pending = new StringBuilder();
-        try (InputStreamReader r = new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8)) {
-            char[] buf = new char[4096];
-            int n;
-            while ((n = r.read(buf)) != -1) {
-                pending.append(buf, 0, n);
-                int marker;
-                while ((marker = pending.indexOf(RC_MARKER)) >= 0) {
-                    String before = pending.substring(0, marker);
-                    int end = pending.indexOf("\n", marker);
-                    if (end < 0) break;
-                    String code = pending.substring(marker + RC_MARKER.length(), end).trim();
-                    pending.delete(0, end + 1);
-                    final String output = before;
-                    final int exit = parseCode(code);
-                    handler.post(() -> {
-                        if (!output.isEmpty()) appendOutput(output);
-                        markExit(exit);
-                    });
-                }
-                // A marker can arrive split across two reads: hold back everything from
-                // its first byte until its newline shows up, or half a marker would be
-                // printed as if it were command output.
-                int partial = pending.lastIndexOf(MARKER_HEAD);
-                int flushUntil = partial >= 0 && pending.indexOf("\n", partial) < 0
-                        ? partial
-                        : pending.length();
-                if (flushUntil > 0 && blocks > 0) {
-                    final String text = pending.substring(0, flushUntil);
-                    pending.delete(0, flushUntil);
-                    handler.post(() -> appendOutput(text));
-                }
-            }
-        } catch (IOException ignored) {
-            // The process went away; reported below.
+    private void restartSession() {
+        if (session != null) {
+            session.finishIfRunning();
+            session = null;
         }
-        if (p == shell && reading) {
-            handler.post(() -> {
-                addBlock("");
-                appendOutput(getString(R.string.term_session_ended));
-                markExit(1);
-            });
-        }
+        if (terminalView != null) terminalView.onScreenUpdated();
+        startSession();
     }
 
-    private static int parseCode(String raw) {
-        try {
-            return Integer.parseInt(raw.trim());
-        } catch (NumberFormatException e) {
-            return 0;
-        }
+    private void clearScreen() {
+        if (session == null) return;
+        session.write("clear\r");
+        terminalView.onScreenUpdated();
     }
 
-    private void submit() {
-        String cmd = input.getText().toString();
-        input.setText("");
-        if (cmd.trim().isEmpty()) return;
-        history.add(cmd);
-        historyIndex = -1;
-        run(cmd);
+    private void toast(String message) {
+        Toast.makeText(this, message, Toast.LENGTH_LONG).show();
     }
 
-    private void runFromChip(String cmd) {
-        history.add(cmd);
-        run(cmd);
+    private void showKeyboard() {
+        InputMethodManager imm = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+        if (imm != null) imm.showSoftInput(terminalView, InputMethodManager.SHOW_IMPLICIT);
     }
 
-    private void run(String cmd) {
-        OutputStream out = stdin;
-        if (shell == null || out == null || !shell.isAlive()) {
-            addBlock("");
-            appendOutput(getString(R.string.term_not_connected));
-            markExit(1);
+    // -------------------------------------------------------- extra keys
+
+    private void onExtraKey(String label) {
+        if (ctrlKey != null && label.equals(getString(R.string.term_key_ctrl))) {
+            ctrlPressed = !ctrlPressed;
+            styleToggle(ctrlKey, ctrlPressed);
             return;
         }
-        addBlock(cmd);
-        // The marker turns an opaque byte stream into "this command ended, with this
-        // exit code", which is what the block colouring and the next prompt rely on.
-        String wire = cmd + "\nprintf '" + RC_MARKER + "%s\\n' \"$?\"\n";
-        new Thread(() -> {
-            try {
-                out.write(wire.getBytes(StandardCharsets.UTF_8));
-                out.flush();
-            } catch (IOException e) {
-                handler.post(() -> appendOutput(getString(R.string.term_write_failed,
-                        String.valueOf(e.getMessage()))));
-            }
-        }, "dsh-term-write").start();
-    }
-
-    private void sendRaw(String text) {
-        OutputStream out = stdin;
-        if (out == null) return;
-        new Thread(() -> {
-            try {
-                out.write(text.getBytes(StandardCharsets.UTF_8));
-                out.flush();
-            } catch (IOException ignored) {
-                // Nothing useful to say: the shell is gone and the reader reports it.
-            }
-        }, "dsh-term-raw").start();
-    }
-
-    private void recallHistory(int direction) {
-        if (history.isEmpty()) return;
-        if (historyIndex < 0) {
-            historyIndex = history.size() - 1;
-        } else {
-            historyIndex = Math.max(0, Math.min(history.size() - 1, historyIndex + direction));
+        if (altKey != null && label.equals(getString(R.string.term_key_alt))) {
+            altPressed = !altPressed;
+            styleToggle(altKey, altPressed);
+            return;
         }
-        input.setText(history.get(historyIndex));
-        input.setSelection(input.getText().length());
+        if (session == null) return;
+        if (label.equals(getString(R.string.term_key_esc))) {
+            session.write("\u001b");
+        } else if (label.equals(getString(R.string.term_key_tab))) {
+            session.write("\t");
+        } else if (label.equals(getString(R.string.term_key_enter))) {
+            session.write("\r");
+        } else if (label.equals(getString(R.string.term_key_del))) {
+            session.write("\u007f");
+        } else if (label.equals(getString(R.string.term_key_prev))) {
+            session.write("\u001b[A");
+        } else if (label.equals(getString(R.string.term_key_next))) {
+            session.write("\u001b[B");
+        } else if (label.equals(getString(R.string.term_key_right))) {
+            session.write("\u001b[C");
+        } else if (label.equals(getString(R.string.term_key_left))) {
+            session.write("\u001b[D");
+        } else if (label.equals(getString(R.string.term_key_home))) {
+            session.write("\u001b[H");
+        } else if (label.equals(getString(R.string.term_key_end))) {
+            session.write("\u001b[F");
+        } else if (label.equals(getString(R.string.term_key_pgup))) {
+            session.write("\u001b[5~");
+        } else if (label.equals(getString(R.string.term_key_pgdn))) {
+            session.write("\u001b[6~");
+        }
+        terminalView.onScreenUpdated();
+        showKeyboard();
     }
 
-    private void moveCursor(int delta) {
-        if (delta == 0) return;
-        int pos = Math.max(0, Math.min(input.getText().length(), input.getSelectionStart() + delta));
-        input.setSelection(pos);
+    private void styleToggle(Button key, boolean on) {
+        key.setTextColor(on ? 0xFF0B0F17 : 0xFFC9D1D9);
+        key.setBackgroundColor(on ? 0xFF22C55E : 0xFF131A24);
     }
+
+    // -------------------------------------------------- lifecycle / back
 
     @Override
     protected void onDestroy() {
-        stopShell();
         super.onDestroy();
+        if (session != null) session.finishIfRunning();
+        session = null;
+    }
+
+    @Override
+    public void onBackPressed() {
+        // Leaving the activity stops the shell with it, so the container is not left with an
+        // orphaned bash holding a dead pty.
+        super.onBackPressed();
+    }
+
+    // ------------------------------------------- TerminalSessionClient
+
+    @Override
+    public void onTextChanged(TerminalSession changedSession) {
+        if (terminalView != null) terminalView.onScreenUpdated();
+    }
+
+    @Override
+    public void onTitleChanged(TerminalSession changedSession) {
+    }
+
+    @Override
+    public void onSessionFinished(TerminalSession finishedSession) {
+        main.post(() -> {
+            if (statusLine != null) {
+                statusLine.setVisibility(View.VISIBLE);
+                statusLine.setText(getString(R.string.term_session_ended));
+            }
+        });
+    }
+
+    @Override
+    public void onCopyTextToClipboard(TerminalSession session, String text) {
+        if (TextUtils.isEmpty(text)) return;
+        ClipboardManager clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+        if (clipboard != null) clipboard.setPrimaryClip(ClipData.newPlainText("Terminal", text));
+    }
+
+    @Override
+    public void onPasteTextFromClipboard(TerminalSession session) {
+        ClipboardManager clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+        if (clipboard == null || session == null) return;
+        ClipData clip = clipboard.getPrimaryClip();
+        if (clip == null || clip.getItemCount() == 0) return;
+        CharSequence text = clip.getItemAt(0).coerceToText(this);
+        if (!TextUtils.isEmpty(text)) session.write(text.toString());
+    }
+
+    @Override
+    public void onBell(TerminalSession session) {
+    }
+
+    @Override
+    public void onColorsChanged(TerminalSession session) {
+        if (terminalView != null) terminalView.onScreenUpdated();
+    }
+
+    @Override
+    public void onTerminalCursorStateChange(boolean state) {
+    }
+
+    @Override
+    public void setTerminalShellPid(TerminalSession session, int pid) {
+    }
+
+    @Override
+    public Integer getTerminalCursorStyle() {
+        return null;
+    }
+
+    @Override
+    public void logError(String tag, String message) {
+    }
+
+    @Override
+    public void logWarn(String tag, String message) {
+    }
+
+    @Override
+    public void logInfo(String tag, String message) {
+    }
+
+    @Override
+    public void logDebug(String tag, String message) {
+    }
+
+    @Override
+    public void logVerbose(String tag, String message) {
+    }
+
+    @Override
+    public void logStackTraceWithMessage(String tag, String message, Exception e) {
+    }
+
+    @Override
+    public void logStackTrace(String tag, Exception e) {
+    }
+
+    // ---------------------------------------------- TerminalViewClient
+
+    @Override
+    public float onScale(float scale) {
+        return scale;
+    }
+
+    @Override
+    public void onSingleTapUp(MotionEvent e) {
+        showKeyboard();
+    }
+
+    @Override
+    public boolean shouldBackButtonBeMappedToEscape() {
+        return false;
+    }
+
+    @Override
+    public boolean shouldEnforceCharBasedInput() {
+        return false;
+    }
+
+    @Override
+    public boolean shouldUseCtrlSpaceWorkaround() {
+        return false;
+    }
+
+    @Override
+    public boolean isTerminalViewSelected() {
+        return true;
+    }
+
+    @Override
+    public void copyModeChanged(boolean copyMode) {
+    }
+
+    @Override
+    public boolean onKeyDown(int keyCode, KeyEvent e, TerminalSession session) {
+        return false;
+    }
+
+    @Override
+    public boolean onKeyUp(int keyCode, KeyEvent e) {
+        return false;
+    }
+
+    @Override
+    public boolean onLongPress(MotionEvent event) {
+        return false;
+    }
+
+    @Override
+    public boolean readControlKey() {
+        return ctrlPressed;
+    }
+
+    @Override
+    public boolean readAltKey() {
+        return altPressed;
+    }
+
+    @Override
+    public boolean readShiftKey() {
+        return false;
+    }
+
+    @Override
+    public boolean readFnKey() {
+        return false;
+    }
+
+    @Override
+    public boolean onCodePoint(int codePoint, boolean ctrlDown, TerminalSession session) {
+        return false;
+    }
+
+    @Override
+    public void onEmulatorSet() {
+        terminalView.requestFocus();
     }
 }
