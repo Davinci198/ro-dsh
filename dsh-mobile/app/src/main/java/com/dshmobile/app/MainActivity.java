@@ -90,6 +90,11 @@ public class MainActivity extends Activity {
             startActivity(new Intent(this, TerminalActivity.class));
         } else if ("reset".equals(screen)) {
             resetContainer();
+        } else if ("setup".equals(screen)) {
+            // Resumes the installer without wiping anything: an interrupted install picks up at
+            // the first stage that is not already done.
+            startActivity(new Intent(this, SetupActivity.class));
+            finish();
         }
 
         // WebView remote debugging: the injected CSS/JS depends on dsh's DOM class

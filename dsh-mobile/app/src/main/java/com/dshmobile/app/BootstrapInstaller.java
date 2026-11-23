@@ -418,6 +418,11 @@ public final class BootstrapInstaller {
         File home = ProotRunner.homeDir(ctx);
         if (!home.isDirectory()) return;
         File keep = keepHomeDir(ctx);
+        File[] parked = keep.listFiles();
+        // A second reset before the install has put the parked home back must not overwrite it:
+        // the live home is then the half-installed container's, and the real profile only exists
+        // in the parked copy.
+        if (parked != null && parked.length > 0) return;
         deleteRecursively(keep);
         //noinspection ResultOfMethodCallIgnored
         keep.mkdirs();
