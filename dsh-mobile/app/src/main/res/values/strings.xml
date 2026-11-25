@@ -111,6 +111,8 @@
     <string name="text_selection_more">More…</string>
     <string name="term_not_installed">The container is not installed yet. Finish the setup first.\n</string>
     <string name="term_connected">Connected to the container shell (working directory /home/dsh). If a command hangs, press Restart.\n</string>
+    <string name="term_tab_label">bash %1$d</string>
+    <string name="term_tab_add">+</string>
     <string name="term_start_failed">Could not start the shell: %1$s\n</string>
     <string name="term_session_ended">\n[session ended, press Restart to reconnect]\n</string>
     <string name="term_not_connected">The shell is not connected. Press Restart.\n</string>
@@ -152,6 +154,7 @@
     <string name="fm_imported">Imported %1$d items</string>
     <string name="fm_imported_partial">Imported %1$d items, %2$d failed</string>
     <string name="fm_import_unreadable">The selected file cannot be read</string>
+    <string name="fm_import_bad_name">The file name is not allowed for an import</string>
     <string name="fm_folder_name">Folder name</string>
     <string name="fm_create">Create</string>
     <string name="fm_create_failed">Could not create the folder</string>

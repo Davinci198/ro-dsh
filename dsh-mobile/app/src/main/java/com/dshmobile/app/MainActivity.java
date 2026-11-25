@@ -75,7 +75,10 @@ public class MainActivity extends Activity {
         // and appends its output to exec.log in the external files directory, which is the only
         // way to look inside a container that has lost its coreutils. The two that need no UI are
         // handled before the setup guard, so they also work while an install is incomplete.
+        // The hooks are only honoured from adb (shell uid): the activity is exported, so without
+        // this gate any app on the device could reset the container or run commands in it.
         String screen = getIntent().getStringExtra("screen");
+        if (!isTrustedAutomationCaller()) screen = null;
         if (handleColdAutomationHook(screen)) return;
 
         // The setup flag alone cannot be trusted after an interrupted reset: the container may be
@@ -688,6 +691,19 @@ public class MainActivity extends Activity {
     }
 
     /**
+     * True when the intent came from an allowed automation caller: adb (com.android.shell), the
+     * user's terminal (com.termux), our own app, or the system (no caller package). Any other
+     * app starting the exported activity gets the hooks ignored.
+     */
+    private boolean isTrustedAutomationCaller() {
+        String pkg = getCallingPackage();
+        return pkg == null
+                || pkg.equals(getPackageName())
+                || pkg.equals("com.android.shell")
+                || pkg.equals("com.termux");
+    }
+
+    /**
      * Runs the hooks that must work before the setup guard, on a cold start. Returns true when the
      * hook took over the screen, leaving onCreate nothing to do.
      */
@@ -755,6 +771,7 @@ public class MainActivity extends Activity {
         super.onNewIntent(intent);
         setIntent(intent);
         String screen = intent.getStringExtra("screen");
+        if (!isTrustedAutomationCaller()) screen = null;
         // A hook that arrives while the activity is already up is served in place, so a scripted
         // check no longer has to force-stop the app (which also kills the harness).
         if ("exec".equals(screen)) {

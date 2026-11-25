@@ -181,10 +181,22 @@ public class HarnessService extends Service {
 
     private void createChannel() {
         NotificationManager nm = getSystemService(NotificationManager.class);
-        NotificationChannel ch = new NotificationChannel(CHANNEL_ID, getString(R.string.svc_channel_name),
-                NotificationManager.IMPORTANCE_LOW);
-        ch.setDescription(getString(R.string.svc_channel_description));
-        nm.createNotificationChannel(ch);
+        NotificationChannel existing = nm.getNotificationChannel(CHANNEL_ID);
+        // The channel is meant to be invisible: Android still requires a notification for the
+        // foreground service, but at IMPORTANCE_NONE it never shows or sounds. Re-create it when
+        // an older install kept the old, visible channel (importance is only applied on create).
+        if (existing != null && existing.getImportance() != NotificationManager.IMPORTANCE_NONE) {
+            nm.deleteNotificationChannel(CHANNEL_ID);
+            existing = null;
+        }
+        if (existing == null) {
+            NotificationChannel ch = new NotificationChannel(CHANNEL_ID,
+                    getString(R.string.svc_channel_name), NotificationManager.IMPORTANCE_NONE);
+            ch.setDescription(getString(R.string.svc_channel_description));
+            ch.setShowBadge(false);
+            ch.setSound(null, null);
+            nm.createNotificationChannel(ch);
+        }
     }
 
     private Notification buildNotification(String text) {
@@ -204,6 +216,7 @@ public class HarnessService extends Service {
                 .setContentIntent(pi)
                 .addAction(new Notification.Action.Builder(null, getString(R.string.svc_stop_action), stopPi).build())
                 .setOngoing(true)
+                .setOnlyAlertOnce(true)
                 .build();
     }
 
