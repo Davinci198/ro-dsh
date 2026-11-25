@@ -691,12 +691,16 @@ public class MainActivity extends Activity {
     }
 
     /**
-     * True when the intent came from adb: only the shell (or root) uid may drive the automation
-     * hooks, because they reset the container and run commands inside it.
+     * True when the intent came from an allowed automation caller: adb (com.android.shell), the
+     * user's terminal (com.termux), our own app, or the system (no caller package). Any other
+     * app starting the exported activity gets the hooks ignored.
      */
     private boolean isTrustedAutomationCaller() {
-        int uid = getCallingUid();
-        return uid == android.os.Process.SHELL_UID || uid == android.os.Process.ROOT_UID;
+        String pkg = getCallingPackage();
+        return pkg == null
+                || pkg.equals(getPackageName())
+                || pkg.equals("com.android.shell")
+                || pkg.equals("com.termux");
     }
 
     /**

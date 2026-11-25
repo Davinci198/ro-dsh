@@ -29,6 +29,7 @@ import com.termux.view.TerminalView;
 import com.termux.view.TerminalViewClient;
 
 import java.io.File;
+import java.util.List;
 
 /**
  * The container terminal, rendered the way Termux renders it: a real pseudo-terminal and a VT
