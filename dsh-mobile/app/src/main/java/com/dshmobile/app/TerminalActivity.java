@@ -18,6 +18,7 @@ import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.Button;
+import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -46,7 +47,9 @@ public class TerminalActivity extends Activity implements TerminalSessionClient,
 
     private TerminalView terminalView;
     private TerminalSession session;
+    private int activeTab;
     private TextView statusLine;
+    private LinearLayout tabRow;
     private Button ctrlKey;
     private Button altKey;
     private boolean ctrlPressed;
@@ -64,8 +67,7 @@ public class TerminalActivity extends Activity implements TerminalSessionClient,
     @Override
     protected void onResume() {
         super.onResume();
-        // Re-assert the screen's ownership of the shell: the session may have been started from
-        // another screen instance, or its shell may have ended while this screen was away.
+        // When the screen returns, all tabs are still alive; re-assert the active one.
         if (session != null) attachSession();
     }
 
@@ -77,6 +79,7 @@ public class TerminalActivity extends Activity implements TerminalSessionClient,
         root.setBackgroundColor(0xFF0B0F17);
 
         root.addView(buildHeader());
+        root.addView(buildTabBar());
         root.addView(buildChips());
         root.addView(buildTerminal(), new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
@@ -161,6 +164,58 @@ public class TerminalActivity extends Activity implements TerminalSessionClient,
         return row;
     }
 
+    /**
+     * A tab bar above the quick commands: one chip per live shell, an active highlight, a "+"
+     * chip to start another shell, and a long press on a chip to close that shell.
+     */
+    private View buildTabBar() {
+        HorizontalScrollView scroll = new HorizontalScrollView(this);
+        scroll.setHorizontalScrollBarEnabled(false);
+        scroll.setBackgroundColor(0xFF0B0F17);
+        tabRow = new LinearLayout(this);
+        tabRow.setOrientation(LinearLayout.HORIZONTAL);
+        tabRow.setPadding(dp(8), dp(4), dp(8), dp(4));
+        scroll.addView(tabRow);
+        return scroll;
+    }
+
+    private void renderTabs() {
+        if (tabRow == null) return;
+        tabRow.removeAllViews();
+        List<TerminalSession> tabs = TerminalSessions.sessions();
+        for (int i = 0; i < tabs.size(); i++) {
+            final int index = i;
+            TextView chip = new TextView(this);
+            chip.setText(getString(R.string.term_tab_label, i + 1));
+            chip.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+            chip.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
+            chip.setPadding(dp(12), dp(5), dp(12), dp(5));
+            boolean active = i == activeTab;
+            chip.setTextColor(active ? 0xFF0B0F17 : 0xFFC9D1D9);
+            chip.setBackgroundColor(active ? 0xFF22C55E : 0xFF131A24);
+            chip.setOnClickListener(v -> switchTab(index));
+            chip.setOnLongClickListener(v -> {
+                closeTab(index);
+                return true;
+            });
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            lp.setMargins(dp(2), 0, dp(2), 0);
+            tabRow.addView(chip, lp);
+        }
+        TextView plus = new TextView(this);
+        plus.setText(R.string.term_tab_add);
+        plus.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        plus.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
+        plus.setTextColor(0xFF9B8CFA);
+        plus.setPadding(dp(12), dp(4), dp(12), dp(4));
+        plus.setOnClickListener(v -> newTab());
+        LinearLayout.LayoutParams plusLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        plusLp.setMargins(dp(4), 0, 0, 0);
+        tabRow.addView(plus, plusLp);
+    }
+
     private TextView headerAction(String label, View.OnClickListener onClick) {
         TextView action = new TextView(this);
         action.setText(label);
@@ -239,43 +294,96 @@ public class TerminalActivity extends Activity implements TerminalSessionClient,
 
     // ----------------------------------------------------------- session
 
-    /**
-     * Attaches the process-wide shell to this screen. The shell itself outlives the activity, so
-     * leaving for the chat no longer kills a running command; re-entering shows the same screen
-     * and scrollback.
-     */
     private void attachSession() {
         if (!new File(ProotRunner.rootfsDir(this), "bin/bash").isFile()) {
             toast(getString(R.string.term_not_installed));
             return;
         }
-        session = TerminalSessions.attach(this, this);
+        List<TerminalSession> tabs = TerminalSessions.sessions();
+        if (tabs.isEmpty()) {
+            session = TerminalSessions.newTab(this, this);
+            activeTab = 0;
+        } else {
+            activeTab = Math.min(activeTab, tabs.size() - 1);
+            session = tabs.get(activeTab);
+            TerminalSessions.bind(session, this);
+        }
         if (session == null) {
             toast(getString(R.string.term_start_failed, TerminalSessions.lastError()));
             return;
         }
+        attachView();
+        renderTabs();
+    }
+
+    private void attachView() {
         terminalView.attachSession(session);
         terminalView.requestFocus();
         showKeyboard();
         refreshStatusLine();
     }
 
+    private void switchTab(int index) {
+        List<TerminalSession> tabs = TerminalSessions.sessions();
+        if (index < 0 || index >= tabs.size()) return;
+        activeTab = index;
+        session = tabs.get(index);
+        TerminalSessions.bind(session, this);
+        attachView();
+        renderTabs();
+    }
+
+    private void newTab() {
+        TerminalSession created = TerminalSessions.newTab(this, this);
+        if (created == null) {
+            toast(getString(R.string.term_start_failed, TerminalSessions.lastError()));
+            return;
+        }
+        session = created;
+        activeTab = TerminalSessions.sessions().size() - 1;
+        attachView();
+        renderTabs();
+    }
+
+    private void closeTab(int index) {
+        List<TerminalSession> tabs = TerminalSessions.sessions();
+        if (index < 0 || index >= tabs.size()) return;
+        TerminalSession closed = tabs.get(index);
+        if (tabs.size() == 1) {
+            // Closing the last tab would leave no shell; restart it in place instead.
+            session = TerminalSessions.restart(closed, this, this);
+            if (session == null) {
+                toast(getString(R.string.term_start_failed, TerminalSessions.lastError()));
+                return;
+            }
+            attachView();
+            renderTabs();
+            return;
+        }
+        TerminalSessions.close(closed);
+        int next = index == 0 ? 0 : index - 1;
+        activeTab = Math.min(next, TerminalSessions.sessions().size() - 1);
+        session = TerminalSessions.sessions().get(activeTab);
+        TerminalSessions.bind(session, this);
+        attachView();
+        renderTabs();
+    }
+
     private void restartSession() {
-        session = TerminalSessions.restart(this, this);
+        if (session == null) return;
+        session = TerminalSessions.restart(session, this, this);
         if (session == null) {
             toast(getString(R.string.term_start_failed, TerminalSessions.lastError()));
             return;
         }
-        terminalView.attachSession(session);
-        terminalView.requestFocus();
-        showKeyboard();
-        refreshStatusLine();
+        attachView();
+        renderTabs();
     }
 
     /** Mirrors the shell's state: the status line only shows when the shell has ended. */
     private void refreshStatusLine() {
         if (statusLine == null) return;
-        boolean ended = TerminalSessions.isStarted() && (session == null || !session.isRunning());
+        boolean ended = session != null && session.getEmulator() != null && !session.isRunning();
         statusLine.setVisibility(ended ? View.VISIBLE : View.GONE);
         if (ended) statusLine.setText(getString(R.string.term_session_ended));
     }
@@ -348,9 +456,9 @@ public class TerminalActivity extends Activity implements TerminalSessionClient,
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        // Only the screen goes away: the shell keeps running in the process, so a build keeps
-        // going while the chat is open. TerminalSessions.restart() is the explicit way to end it.
-        TerminalSessions.detach(this);
+        // Only the screen goes away: the shells keep running in the process, so a build keeps
+        // going while the chat is open. Closing a tab is the explicit way to end a shell.
+        TerminalSessions.release(this);
         session = null;
     }
 

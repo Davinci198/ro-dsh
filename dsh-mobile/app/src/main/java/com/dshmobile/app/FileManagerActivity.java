@@ -285,8 +285,13 @@ public class FileManagerActivity extends Activity {
     }
 
     private void importUri(Uri uri) throws IOException {
-        String name = displayName(uri);
+        String name = safeImportName(displayName(uri));
         File dest = uniqueName(current, name);
+        // Belt and braces: a document provider can hand back a name that resolves outside the
+        // selected folder (for example a bare ".."). Refuse rather than write somewhere else.
+        if (!dest.getCanonicalPath().startsWith(current.getCanonicalPath())) {
+            throw new IOException(getString(R.string.fm_import_bad_name));
+        }
         try (InputStream in = getContentResolver().openInputStream(uri);
              OutputStream out = new FileOutputStream(dest)) {
             if (in == null) throw new IOException(getString(R.string.fm_import_unreadable));
@@ -296,6 +301,26 @@ public class FileManagerActivity extends Activity {
                 out.write(buf, 0, n);
             }
         }
+    }
+
+    /**
+     * Tightens a provider-reported name so the import can never leave the target folder:
+     * separators are flattened, control characters dropped, and ".", ".." or empty names get a
+     * placeholder prefix.
+     */
+    private static String safeImportName(String name) {
+        StringBuilder sb = new StringBuilder(name.length());
+        for (int i = 0; i < name.length(); i++) {
+            char c = name.charAt(i);
+            if (c == '/' || c == '\\') c = '_';
+            if (c < 0x20) continue;
+            sb.append(c);
+        }
+        String cleaned = sb.toString();
+        if (cleaned.isEmpty() || cleaned.equals(".") || cleaned.equals("..")) {
+            cleaned = "import-" + System.currentTimeMillis();
+        }
+        return cleaned;
     }
 
     private String displayName(Uri uri) {

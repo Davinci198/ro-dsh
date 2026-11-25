@@ -112,6 +112,8 @@
     <string name="text_selection_more">Mai mult…</string>
     <string name="term_not_installed">Containerul nu este încă instalat. Termină mai întâi inițializarea.\n</string>
     <string name="term_connected">Conectat la shell-ul containerului (director de lucru /home/dsh). Dacă o comandă se blochează, apasă Repornește.\n</string>
+    <string name="term_tab_label">bash %1$d</string>
+    <string name="term_tab_add">+</string>
     <string name="term_start_failed">Shell-ul nu a pornit: %1$s\n</string>
     <string name="term_session_ended">\n[sesiune încheiată, apasă Repornește pentru reconectare]\n</string>
     <string name="term_not_connected">Shell-ul nu este conectat. Apasă Repornește.\n</string>
@@ -153,6 +155,7 @@
     <string name="fm_imported">%1$d elemente importate</string>
     <string name="fm_imported_partial">%1$d elemente importate, %2$d eșuate</string>
     <string name="fm_import_unreadable">Fișierul selectat nu poate fi citit</string>
+    <string name="fm_import_bad_name">Numele de fișier nu este permis pentru import</string>
     <string name="fm_folder_name">Numele folderului</string>
     <string name="fm_create">Creează</string>
     <string name="fm_create_failed">Folderul nu a putut fi creat</string>
