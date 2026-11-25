@@ -28,10 +28,6 @@ import com.termux.view.TerminalView;
 import com.termux.view.TerminalViewClient;
 
 import java.io.File;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
 
 /**
  * The container terminal, rendered the way Termux renders it: a real pseudo-terminal and a VT
@@ -47,7 +43,6 @@ public class TerminalActivity extends Activity implements TerminalSessionClient,
     private static final String TAG = "DshTerminal";
     /** Terminal font size in sp; TerminalView.setTextSize() wants pixels, so it is converted. */
     private static final float TEXT_SIZE_SP = 12f;
-    private static final int TRANSCRIPT_ROWS = 5000;
 
     private TerminalView terminalView;
     private TerminalSession session;
@@ -63,7 +58,15 @@ public class TerminalActivity extends Activity implements TerminalSessionClient,
         super.onCreate(savedInstanceState);
         getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         setContentView(buildUi());
-        startSession();
+        attachSession();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // Re-assert the screen's ownership of the shell: the session may have been started from
+        // another screen instance, or its shell may have ended while this screen was away.
+        if (session != null) attachSession();
     }
 
     // ---------------------------------------------------------------- UI
@@ -236,51 +239,45 @@ public class TerminalActivity extends Activity implements TerminalSessionClient,
 
     // ----------------------------------------------------------- session
 
-    private void startSession() {
+    /**
+     * Attaches the process-wide shell to this screen. The shell itself outlives the activity, so
+     * leaving for the chat no longer kills a running command; re-entering shows the same screen
+     * and scrollback.
+     */
+    private void attachSession() {
         if (!new File(ProotRunner.rootfsDir(this), "bin/bash").isFile()) {
             toast(getString(R.string.term_not_installed));
             return;
         }
-        try {
-            // Self-healing: an existing container gets the monitor without a reinstall.
-            BootstrapInstaller.ensureMtop(this, ProotRunner.rootfsDir(this));
-            List<String> argv = ProotRunner.buildCommand(this,
-                    Arrays.asList("/bin/bash", "--login"));
-            String[] env = hostEnv();
-            session = new TerminalSession(argv.get(0), ProotRunner.homeDir(this).getAbsolutePath(),
-                    argv.toArray(new String[0]), env, TRANSCRIPT_ROWS, this);
-            terminalView.attachSession(session);
-            terminalView.requestFocus();
-            showKeyboard();
-        } catch (Exception e) {
-            toast(getString(R.string.term_start_failed, String.valueOf(e.getMessage())));
+        session = TerminalSessions.attach(this, this);
+        if (session == null) {
+            toast(getString(R.string.term_start_failed, TerminalSessions.lastError()));
+            return;
         }
-    }
-
-    /**
-     * The pty child is exec'd with exactly this environment, so the host-side variables ProotRunner
-     * needs (its loader, its tmp dir, its shared libraries) are carried over explicitly.
-     */
-    private String[] hostEnv() {
-        List<String> env = new ArrayList<>();
-        for (Map.Entry<String, String> e : System.getenv().entrySet()) {
-            env.add(e.getKey() + "=" + e.getValue());
-        }
-        env.add("PROOT_TMP_DIR=" + ProotRunner.tmpDir(this).getAbsolutePath());
-        File libs = ProotRunner.libDir(this);
-        if (libs.isDirectory()) env.add("LD_LIBRARY_PATH=" + libs.getAbsolutePath());
-        File loader = new File(ProotRunner.baseDir(this), "loader");
-        if (loader.isFile()) env.add("PROOT_LOADER=" + loader.getAbsolutePath());
-        return env.toArray(new String[0]);
+        terminalView.attachSession(session);
+        terminalView.requestFocus();
+        showKeyboard();
+        refreshStatusLine();
     }
 
     private void restartSession() {
-        if (session != null) {
-            session.finishIfRunning();
-            session = null;
+        session = TerminalSessions.restart(this, this);
+        if (session == null) {
+            toast(getString(R.string.term_start_failed, TerminalSessions.lastError()));
+            return;
         }
-        if (terminalView != null) terminalView.onScreenUpdated();
-        startSession();
+        terminalView.attachSession(session);
+        terminalView.requestFocus();
+        showKeyboard();
+        refreshStatusLine();
+    }
+
+    /** Mirrors the shell's state: the status line only shows when the shell has ended. */
+    private void refreshStatusLine() {
+        if (statusLine == null) return;
+        boolean ended = TerminalSessions.isStarted() && (session == null || !session.isRunning());
+        statusLine.setVisibility(ended ? View.VISIBLE : View.GONE);
+        if (ended) statusLine.setText(getString(R.string.term_session_ended));
     }
 
     private void clearScreen() {
@@ -351,14 +348,15 @@ public class TerminalActivity extends Activity implements TerminalSessionClient,
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        if (session != null) session.finishIfRunning();
+        // Only the screen goes away: the shell keeps running in the process, so a build keeps
+        // going while the chat is open. TerminalSessions.restart() is the explicit way to end it.
+        TerminalSessions.detach(this);
         session = null;
     }
 
     @Override
     public void onBackPressed() {
-        // Leaving the activity stops the shell with it, so the container is not left with an
-        // orphaned bash holding a dead pty.
+        // Leaving the screen leaves the shell alive; this is what makes the terminal usable.
         super.onBackPressed();
     }
 
@@ -375,12 +373,7 @@ public class TerminalActivity extends Activity implements TerminalSessionClient,
 
     @Override
     public void onSessionFinished(TerminalSession finishedSession) {
-        main.post(() -> {
-            if (statusLine != null) {
-                statusLine.setVisibility(View.VISIBLE);
-                statusLine.setText(getString(R.string.term_session_ended));
-            }
-        });
+        main.post(this::refreshStatusLine);
     }
 
     @Override

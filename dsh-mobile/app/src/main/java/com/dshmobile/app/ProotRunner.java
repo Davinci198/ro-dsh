@@ -5,7 +5,9 @@ import android.content.Context;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /** Builds and starts the PRoot container processes. */
 public final class ProotRunner {
@@ -41,16 +43,42 @@ public final class ProotRunner {
 
     /** Sets the host-side environment the proot process needs. */
     public static void applyEnv(Context ctx, ProcessBuilder pb) {
-        pb.environment().put("PROOT_TMP_DIR", tmpDir(ctx).getAbsolutePath());
+        pb.environment().putAll(env(ctx));
+    }
+
+    /**
+     * The host-side variables proot needs, in one place: a ProcessBuilder gets them through
+     * {@link #applyEnv} and the pty gets them through {@link #hostEnv}, so the two launches of
+     * the container can never drift apart.
+     */
+    public static Map<String, String> env(Context ctx) {
+        Map<String, String> env = new LinkedHashMap<>();
+        env.put("PROOT_TMP_DIR", tmpDir(ctx).getAbsolutePath());
         if (libDir(ctx).isDirectory()) {
-            pb.environment().put("LD_LIBRARY_PATH", libDir(ctx).getAbsolutePath());
+            env.put("LD_LIBRARY_PATH", libDir(ctx).getAbsolutePath());
         }
         // The loader has to be given explicitly: the path compiled into Termux's proot points
         // at Termux's private directory, which another uid cannot read.
         File loader = new File(baseDir(ctx), "loader");
         if (loader.isFile()) {
-            pb.environment().put("PROOT_LOADER", loader.getAbsolutePath());
+            env.put("PROOT_LOADER", loader.getAbsolutePath());
         }
+        return env;
+    }
+
+    /**
+     * The pty child is exec'd with exactly this environment, so it inherits the app's variables
+     * plus the host-side ones proot needs.
+     */
+    public static String[] hostEnv(Context ctx) {
+        List<String> out = new ArrayList<>();
+        for (Map.Entry<String, String> e : System.getenv().entrySet()) {
+            out.add(e.getKey() + "=" + e.getValue());
+        }
+        for (Map.Entry<String, String> e : env(ctx).entrySet()) {
+            out.add(e.getKey() + "=" + e.getValue());
+        }
+        return out.toArray(new String[0]);
     }
 
     public static File tmpDir(Context ctx) {
