@@ -50,6 +50,8 @@
         <activity
             android:name=".TerminalActivity"
             android:exported="false"
+            android:launchMode="singleTop"
+            android:configChanges="orientation|screenSize|keyboardHidden|keyboard|smallestScreenSize"
             android:windowSoftInputMode="adjustResize" />
 
         <service
